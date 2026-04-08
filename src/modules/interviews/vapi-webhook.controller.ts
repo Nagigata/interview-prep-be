@@ -1,4 +1,13 @@
-import { Controller, Post, Body, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Logger,
+  HttpCode,
+  HttpStatus,
+  Res,
+} from '@nestjs/common';
+import { Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { InterviewsService } from './interviews.service';
 import { AiService } from '../../shared/ai/ai.service';
@@ -14,7 +23,11 @@ export class VapiWebhookController {
 
   @Public()
   @Post('generate')
-  async handleGenerate(@Body() body: any) {
+  @HttpCode(HttpStatus.OK)
+  async handleGenerate(@Body() body: any, @Res() res: Response) {
+    if (body?.message?.type !== 'tool-calls') {
+      return res.status(HttpStatus.OK).json({});
+    }
     const rawArgs = body?.message?.toolCallList?.[0]?.function?.arguments;
     const args =
       typeof rawArgs === 'string' ? JSON.parse(rawArgs) : (rawArgs ?? body);
@@ -22,9 +35,7 @@ export class VapiWebhookController {
     const { type, role, level, techstack, amount, userid } = args;
     const toolCallId = body?.message?.toolCallList?.[0]?.id ?? 'unknown';
 
-    this.logger.log(
-      `Generating interview for user: ${userid}, role: ${role}`,
-    );
+    this.logger.log(`Generating interview for user: ${userid}, role: ${role}`);
 
     try {
       // Generate questions using AI
@@ -65,24 +76,24 @@ export class VapiWebhookController {
         finalized: true,
       });
 
-      return {
+      return res.status(HttpStatus.OK).json({
         results: [
           {
             toolCallId,
             result: 'Interview generated successfully!',
           },
         ],
-      };
+      });
     } catch (error) {
       this.logger.error('Error generating interview:', error);
-      return {
+      return res.status(HttpStatus.OK).json({
         results: [
           {
             toolCallId,
             result: 'Failed to generate interview. Please try again.',
           },
         ],
-      };
+      });
     }
   }
 }
