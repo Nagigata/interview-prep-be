@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  avatarUrl String?  @map("avatar_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  interviews Interview[]
+  feedbacks  Feedback[]
+
+  @@map("users")
+}
+
+model Interview {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  role       String
+  level      String
+  type       String
+  techstack  String[]
+  questions  String[]
+  coverImage String?  @map("cover_image")
+  finalized  Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user        User         @relation(fields: [userId], references: [id])
+  transcripts Transcript[]
+  feedback    Feedback?
+
+  @@map("interviews")
+}
+
+model Transcript {
+  id          String   @id @default(uuid())
+  interviewId String   @map("interview_id")
+  role        String   // "user" | "assistant"
+  content     String
+  sequence    Int
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("transcripts")
+}
+
+model Feedback {
+  id                  String   @id @default(uuid())
+  interviewId         String   @unique @map("interview_id")
+  userId              String   @map("user_id")
+  totalScore          Int      @map("total_score")
+  strengths           String[]
+  areasForImprovement String[] @map("areas_for_improvement")
+  finalAssessment     String   @map("final_assessment")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  interview      Interview       @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id])
+  categoryScores CategoryScore[]
+
+  @@map("feedbacks")
+}
+
+model CategoryScore {
+  id         String @id @default(uuid())
+  feedbackId String @map("feedback_id")
+  name       String
+  score      Int
+  comment    String
+
+  feedback Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+
+  @@map("category_scores")
+}
