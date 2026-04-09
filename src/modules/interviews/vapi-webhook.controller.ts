@@ -32,7 +32,10 @@ export class VapiWebhookController {
     const args =
       typeof rawArgs === 'string' ? JSON.parse(rawArgs) : (rawArgs ?? body);
 
-    const { type, role, level, techstack, amount, userid } = args;
+    const { type, role, level, techstack, amount } = args;
+    const callVars = body?.message?.call?.variableValues || {};
+    const userid = args.userid || callVars.userid;
+    const language = args.language || callVars.language || 'en';
     const toolCallId = body?.message?.toolCallList?.[0]?.id ?? 'unknown';
 
     this.logger.log(`Generating interview for user: ${userid}, role: ${role}`);
@@ -45,6 +48,7 @@ export class VapiWebhookController {
         type,
         techstack,
         amount,
+        language,
       });
 
       // Cover images
@@ -74,6 +78,7 @@ export class VapiWebhookController {
         questions,
         coverImage,
         finalized: true,
+        language,
       });
 
       return res.status(HttpStatus.OK).json({

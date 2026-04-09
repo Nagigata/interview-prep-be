@@ -23,6 +23,10 @@ export class CreateInterviewDto {
   @IsString({ each: true })
   techstack: string[];
 
+  @IsString()
+  @IsOptional()
+  language?: string;
+
   @IsArray()
   @IsString({ each: true })
   questions: string[];

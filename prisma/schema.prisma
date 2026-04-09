@@ -30,6 +30,7 @@ model Interview {
   type       String
   techstack  String[]
   questions  String[]
+  language   String   @default("en")
   coverImage String?  @map("cover_image")
   finalized  Boolean  @default(false)
   createdAt  DateTime @default(now()) @map("created_at")

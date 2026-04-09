@@ -18,7 +18,7 @@ export class FeedbacksService {
     const { interviewId, transcript } = createFeedbackDto;
 
     // Validate interview exists
-    await this.interviewsService.findById(interviewId);
+    const interview = await this.interviewsService.findById(interviewId);
 
     // Check if feedback already exists for this interview
     const existing = await this.prisma.feedback.findUnique({
@@ -30,7 +30,7 @@ export class FeedbacksService {
 
     // Generate feedback using AI
     this.logger.log(`Generating AI feedback for interview: ${interviewId}`);
-    const aiResult = await this.aiService.generateFeedback(transcript);
+    const aiResult = await this.aiService.generateFeedback(transcript, interview.language);
 
     const feedbackData = {
       interviewId,
