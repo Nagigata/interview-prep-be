@@ -51,23 +51,7 @@ export class VapiWebhookController {
         language,
       });
 
-      // Cover images
-      const interviewCovers = [
-        '/adobe.png',
-        '/amazon.png',
-        '/facebook.png',
-        '/hostinger.png',
-        '/pinterest.png',
-        '/quora.png',
-        '/reddit.png',
-        '/skype.png',
-        '/spotify.png',
-        '/telegram.png',
-        '/tiktok.png',
-        '/yahoo.png',
-      ];
-      const coverImage =
-        interviewCovers[Math.floor(Math.random() * interviewCovers.length)];
+
 
       // Save interview to database
       await this.interviewsService.create(userid, {
@@ -76,7 +60,6 @@ export class VapiWebhookController {
         type,
         techstack: techstack ? techstack.split(',') : [],
         questions,
-        coverImage,
         finalized: true,
         language,
       });

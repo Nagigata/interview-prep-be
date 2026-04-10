@@ -32,10 +32,6 @@ export class CreateInterviewDto {
   questions: string[];
 
   @IsOptional()
-  @IsString()
-  coverImage?: string;
-
-  @IsOptional()
   @IsBoolean()
   finalized?: boolean;
 }
