@@ -18,6 +18,7 @@ model User {
 
   interviews Interview[]
   feedbacks  Feedback[]
+  challengeSubmissions ChallengeSubmission[]
 
   @@map("users")
 }
@@ -83,4 +84,61 @@ model CategoryScore {
   feedback Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
 
   @@map("category_scores")
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model Skill {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  icon        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  challenges Challenge[]
+
+  @@map("skills")
+}
+
+model Challenge {
+  id           String     @id @default(uuid())
+  skillId      String     @map("skill_id")
+  title        String
+  slug         String     @unique
+  description  String     @db.Text
+  difficulty   Difficulty @default(EASY)
+  tags         String[]
+  templateCode Json       @map("template_code")
+  testCases    Json       @map("test_cases")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  skill       Skill                 @relation(fields: [skillId], references: [id])
+  submissions ChallengeSubmission[]
+
+  @@map("challenges")
+}
+
+model ChallengeSubmission {
+  id           String   @id @default(uuid())
+  challengeId  String   @map("challenge_id")
+  userId       String   @map("user_id")
+  code         String   @db.Text
+  language     String
+  status       String   @default("PENDING")
+  runtime      Int?
+  memory       Int?
+  errorMessage String?  @map("error_message") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  challenge Challenge @relation(fields: [challengeId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@map("challenge_submissions")
 }

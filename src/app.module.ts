@@ -8,6 +8,8 @@ import { UsersModule } from './modules/users/users.module';
 import { InterviewsModule } from './modules/interviews/interviews.module';
 import { FeedbacksModule } from './modules/feedbacks/feedbacks.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { ChallengesModule } from './modules/challenges/challenges.module';
+import { SubmissionsModule } from './modules/submissions/submissions.module';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     UsersModule,
     InterviewsModule,
     FeedbacksModule,
+    ChallengesModule,
+    SubmissionsModule,
   ],
   providers: [
     {

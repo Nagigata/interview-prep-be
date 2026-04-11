@@ -19,5 +19,39 @@ services:
       - "6379:6379"
     restart: unless-stopped
 
+  judge0-db:
+    image: postgres:16-alpine
+    container_name: judge0_db
+    environment:
+      POSTGRES_DB: judge0
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    restart: unless-stopped
+
+  judge0:
+    image: judge0/judge0:latest
+    container_name: judge0_server
+    ports:
+      - "2358:2358"
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    depends_on:
+      - judge0-db
+      - redis
+    privileged: true
+    restart: unless-stopped
+
+  judge0-worker:
+    image: judge0/judge0:latest
+    container_name: judge0_worker
+    command: ["./scripts/workers"]
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    depends_on:
+      - judge0-db
+      - redis
+    privileged: true
+    restart: unless-stopped
+
 volumes:
   pgdata:
