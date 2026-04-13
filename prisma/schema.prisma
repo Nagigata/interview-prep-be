@@ -19,6 +19,7 @@ model User {
   interviews Interview[]
   feedbacks  Feedback[]
   challengeSubmissions ChallengeSubmission[]
+  challengeStars      ChallengeStar[]
 
   @@map("users")
 }
@@ -113,7 +114,8 @@ model Challenge {
   slug         String     @unique
   description  String     @db.Text
   difficulty   Difficulty @default(EASY)
-  tags         String[]
+  subdomain    String     @default("")
+  skillLevel   String     @default("Basic") @map("skill_level")
   templateCode Json       @map("template_code")
   testCases    Json       @map("test_cases")
   createdAt    DateTime   @default(now()) @map("created_at")
@@ -121,6 +123,7 @@ model Challenge {
 
   skill       Skill                 @relation(fields: [skillId], references: [id])
   submissions ChallengeSubmission[]
+  stars       ChallengeStar[]
 
   @@map("challenges")
 }
@@ -141,4 +144,16 @@ model ChallengeSubmission {
   user      User      @relation(fields: [userId], references: [id])
 
   @@map("challenge_submissions")
+}
+model ChallengeStar {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  challengeId String   @map("challenge_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id])
+  challenge Challenge @relation(fields: [challengeId], references: [id])
+
+  @@unique([userId, challengeId])
+  @@map("challenge_stars")
 }

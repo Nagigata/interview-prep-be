@@ -39,8 +39,9 @@ async function main() {
       slug: 'sum-of-two',
       description: 'Write a function that takes two numbers as input and returns their sum.',
       difficulty: 'EASY',
+      subdomain: 'Fundamentals',
+      skillLevel: 'Basic',
       skillId: python.id,
-      tags: ['math', 'fundamentals'],
       templateCode: {
         python: 'def solve(a, b):\n    # Write your code here\n    pass',
       },
@@ -60,13 +61,34 @@ async function main() {
       slug: 'hello-world-react',
       description: 'Create a simple React component that returns a div saying "Hello World".',
       difficulty: 'EASY',
+      subdomain: 'Components',
+      skillLevel: 'Basic',
       skillId: react.id,
-      tags: ['ui', 'basics'],
       templateCode: {
         javascript: 'import React from "react";\n\nconst Welcome = () => {\n  // Write your code here\n};',
       },
       testCases: [
         { input: '', output: 'Hello World' },
+      ],
+    },
+  });
+
+  await prisma.challenge.upsert({
+    where: { slug: 'counter-react' },
+    update: {},
+    create: {
+      title: 'Counter Hook',
+      slug: 'counter-react',
+      description: 'Implement a counter using useState hook.',
+      difficulty: 'MEDIUM',
+      subdomain: 'State Management',
+      skillLevel: 'Intermediate',
+      skillId: react.id,
+      templateCode: {
+        javascript: 'import React, { useState } from "react";\n\nconst Counter = () => {\n  // Write your code here\n};',
+      },
+      testCases: [
+        { input: 'increment', output: '1' },
       ],
     },
   });
