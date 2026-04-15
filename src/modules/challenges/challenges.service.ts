@@ -21,8 +21,7 @@ export class ChallengesService {
     userId?: string,
     filters?: {
       difficulty?: string[];
-      subdomain?: string[];
-      skillLevel?: string[];
+      topics?: string[];
       status?: string[];
     },
   ) {
@@ -42,13 +41,14 @@ export class ChallengesService {
       where.difficulty = { in: filters.difficulty };
     }
 
-    if (filters?.subdomain?.length) {
-      where.subdomain = { in: filters.subdomain };
+    if (filters?.topics?.length) {
+      // Topics are stored as comma-separated string so we use OR contains
+      where.OR = filters.topics.map((topic) => ({
+        topics: { contains: topic, mode: 'insensitive' },
+      }));
     }
 
-    if (filters?.skillLevel?.length) {
-      where.skillLevel = { in: filters.skillLevel };
-    }
+
 
     // Handled Solved/Unsolved filters later in JS/separate query if needed,
     // but for now let's fetch matching challenges and then filter by status if provided.
@@ -76,8 +76,7 @@ export class ChallengesService {
       title: c.title,
       slug: c.slug,
       difficulty: c.difficulty,
-      subdomain: c.subdomain,
-      skillLevel: c.skillLevel,
+      topics: c.topics,
       isSolved: (c as any).submissions?.length > 0,
       isStarred: (c as any).stars?.length > 0,
     }));
@@ -142,5 +141,84 @@ export class ChallengesService {
     }
 
     return challenge;
+  }
+
+  async getAllChallenges(
+    userId?: string,
+    filters?: {
+      difficulty?: string[];
+      topics?: string[];
+      status?: string[];
+      skillSlug?: string;
+    },
+  ) {
+    const where: any = {};
+
+    if (filters?.difficulty?.length) {
+      where.difficulty = { in: filters.difficulty };
+    }
+
+    if (filters?.topics?.length) {
+      // Topics are stored as comma-separated string so we use OR contains
+      where.OR = filters.topics.map((topic) => ({
+        topics: { contains: topic, mode: 'insensitive' },
+      }));
+    }
+
+
+
+    if (filters?.skillSlug) {
+      const skill = await this.prisma.skill.findUnique({
+        where: { slug: filters.skillSlug },
+      });
+      if (skill) {
+        where.skillId = skill.id;
+      }
+    }
+
+    const include: any = {};
+    if (userId) {
+      include.submissions = {
+        where: { userId, status: 'ACCEPTED' },
+        take: 1,
+      };
+      include.stars = {
+        where: { userId },
+        take: 1,
+      };
+    }
+
+    const challenges = await this.prisma.challenge.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: Object.keys(include).length > 0 ? include : undefined,
+    });
+
+    let resultChallenges = challenges.map((c) => ({
+      id: c.id,
+      title: c.title,
+      slug: c.slug,
+      difficulty: c.difficulty,
+      topics: c.topics,
+      skillSlug: (c as any).skill?.slug,
+      isSolved: (c as any).submissions?.length > 0,
+      isStarred: (c as any).stars?.length > 0,
+    }));
+
+    if (filters?.status?.length) {
+      const statusFilters = filters.status.map((s) => s.toUpperCase());
+      const hasSolved = statusFilters.includes('SOLVED');
+      const hasUnsolved = statusFilters.includes('UNSOLVED');
+
+      if (!(hasSolved && hasUnsolved)) {
+        resultChallenges = resultChallenges.filter((c) => {
+          if (hasSolved) return c.isSolved;
+          if (hasUnsolved) return !c.isSolved;
+          return true;
+        });
+      }
+    }
+
+    return resultChallenges;
   }
 }

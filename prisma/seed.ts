@@ -12,7 +12,8 @@ async function main() {
     create: {
       name: 'Python',
       slug: 'python',
-      description: 'Master Python programming from basics to advanced data structures.',
+      description:
+        'Master Python programming from basics to advanced data structures.',
       icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg',
     },
   });
@@ -23,7 +24,8 @@ async function main() {
     create: {
       name: 'React',
       slug: 'react',
-      description: 'Build modern user interfaces with React and functional components.',
+      description:
+        'Build modern user interfaces with React and functional components.',
       icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/react/react-original.svg',
     },
   });
@@ -37,10 +39,10 @@ async function main() {
     create: {
       title: 'Sum of Two Numbers',
       slug: 'sum-of-two',
-      description: 'Write a function that takes two numbers as input and returns their sum.',
+      description:
+        'Write a function that takes two numbers as input and returns their sum.',
       difficulty: 'EASY',
-      subdomain: 'Fundamentals',
-      skillLevel: 'Basic',
+      topics: 'Fundamentals',
       skillId: python.id,
       templateCode: {
         python: 'def solve(a, b):\n    # Write your code here\n    pass',
@@ -59,17 +61,16 @@ async function main() {
     create: {
       title: 'Hello World React',
       slug: 'hello-world-react',
-      description: 'Create a simple React component that returns a div saying "Hello World".',
+      description:
+        'Create a simple React component that returns a div saying "Hello World".',
       difficulty: 'EASY',
-      subdomain: 'Components',
-      skillLevel: 'Basic',
+      topics: 'Components',
       skillId: react.id,
       templateCode: {
-        javascript: 'import React from "react";\n\nconst Welcome = () => {\n  // Write your code here\n};',
+        javascript:
+          'import React from "react";\n\nconst Welcome = () => {\n  // Write your code here\n};',
       },
-      testCases: [
-        { input: '', output: 'Hello World' },
-      ],
+      testCases: [{ input: '', output: 'Hello World' }],
     },
   });
 
@@ -81,15 +82,13 @@ async function main() {
       slug: 'counter-react',
       description: 'Implement a counter using useState hook.',
       difficulty: 'MEDIUM',
-      subdomain: 'State Management',
-      skillLevel: 'Intermediate',
+      topics: 'State Management',
       skillId: react.id,
       templateCode: {
-        javascript: 'import React, { useState } from "react";\n\nconst Counter = () => {\n  // Write your code here\n};',
+        javascript:
+          'import React, { useState } from "react";\n\nconst Counter = () => {\n  // Write your code here\n};',
       },
-      testCases: [
-        { input: 'increment', output: '1' },
-      ],
+      testCases: [{ input: 'increment', output: '1' }],
     },
   });
 

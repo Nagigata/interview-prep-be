@@ -114,8 +114,12 @@ model Challenge {
   slug         String     @unique
   description  String     @db.Text
   difficulty   Difficulty @default(EASY)
-  subdomain    String     @default("")
-  skillLevel   String     @default("Basic") @map("skill_level")
+  topics       String     @default("")
+  examples     Json?
+  constraints  Json?
+  hints        Json?
+  solution     String?    @db.Text
+  followUps    Json?      @map("follow_ups")
   templateCode Json       @map("template_code")
   testCases    Json       @map("test_cases")
   createdAt    DateTime   @default(now()) @map("created_at")
