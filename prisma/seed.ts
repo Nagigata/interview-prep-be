@@ -5,34 +5,124 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Seeding data...');
 
+  // Remove React skill and its challenges if it exists
+  const reactSkill = await prisma.skill.findUnique({ where: { slug: 'react' }, include: { challenges: true } });
+  if (reactSkill) {
+    const challengeIds = reactSkill.challenges.map((c) => c.id);
+    await prisma.challengeSubmission.deleteMany({ where: { challengeId: { in: challengeIds } } });
+    await prisma.challengeStar.deleteMany({ where: { challengeId: { in: challengeIds } } });
+    await prisma.challenge.deleteMany({ where: { skillId: reactSkill.id } });
+    await prisma.skill.delete({ where: { id: reactSkill.id } });
+  }
+
   // 1. Create Skills
   const python = await prisma.skill.upsert({
     where: { slug: 'python' },
-    update: {},
+    update: {
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg',
+    },
     create: {
       name: 'Python',
       slug: 'python',
-      description:
-        'Master Python programming from basics to advanced data structures.',
+      description: 'Master Python programming from basics to advanced data structures.',
       icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg',
     },
   });
 
-  const react = await prisma.skill.upsert({
-    where: { slug: 'react' },
-    update: {},
+  const javascript = await prisma.skill.upsert({
+    where: { slug: 'javascript' },
+    update: {
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/javascript/javascript-original.svg',
+    },
     create: {
-      name: 'React',
-      slug: 'react',
-      description:
-        'Build modern user interfaces with React and functional components.',
-      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/react/react-original.svg',
+      name: 'JavaScript',
+      slug: 'javascript',
+      description: 'The language of the web. Practice core JS concepts and closures.',
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/javascript/javascript-original.svg',
+    },
+  });
+
+  await prisma.skill.upsert({
+    where: { slug: 'typescript' },
+    update: {
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/typescript/typescript-original.svg',
+    },
+    create: {
+      name: 'TypeScript',
+      slug: 'typescript',
+      description: 'Strongly typed JavaScript. Learn interfaces, generics and more.',
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/typescript/typescript-original.svg',
+    },
+  });
+
+  await prisma.skill.upsert({
+    where: { slug: 'c' },
+    update: {
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/c/c-original.svg',
+    },
+    create: {
+      name: 'C',
+      slug: 'c',
+      description: 'Procedural programming and memory management.',
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/c/c-original.svg',
+    },
+  });
+
+  await prisma.skill.upsert({
+    where: { slug: 'cpp' },
+    update: {
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/cplusplus/cplusplus-original.svg',
+    },
+    create: {
+      name: 'C++',
+      slug: 'cpp',
+      description: 'Object-oriented programming with high performance.',
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/cplusplus/cplusplus-original.svg',
+    },
+  });
+
+  await prisma.skill.upsert({
+    where: { slug: 'java' },
+    update: {
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/java/java-original.svg',
+    },
+    create: {
+      name: 'Java',
+      slug: 'java',
+      description: 'Write once, run anywhere. Deep dive into OOP and JVM.',
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/java/java-original.svg',
+    },
+  });
+
+  await prisma.skill.upsert({
+    where: { slug: 'csharp' },
+    update: {
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/csharp/csharp-original.svg',
+    },
+    create: {
+      name: 'C#',
+      slug: 'csharp',
+      description: 'Modern, object-oriented, and type-safe programming language.',
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/csharp/csharp-original.svg',
+    },
+  });
+
+  await prisma.skill.upsert({
+    where: { slug: 'sql' },
+    update: {
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/azuresqldatabase/azuresqldatabase-original.svg',
+    },
+    create: {
+      name: 'SQL',
+      slug: 'sql',
+      description: 'Master relational database queries, joins, and indexing.',
+      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/azuresqldatabase/azuresqldatabase-original.svg',
     },
   });
 
   console.log('Skills created!');
 
-  // 2. Create Challenges for Python
+  // 2. Create Challenges for Python (Example)
   await prisma.challenge.upsert({
     where: { slug: 'sum-of-two' },
     update: {},
@@ -54,41 +144,21 @@ async function main() {
     },
   });
 
-  // 3. Create Challenges for React
+  // Example challenges for JavaScript
   await prisma.challenge.upsert({
-    where: { slug: 'hello-world-react' },
+    where: { slug: 'hello-world-js' },
     update: {},
     create: {
-      title: 'Hello World React',
-      slug: 'hello-world-react',
-      description:
-        'Create a simple React component that returns a div saying "Hello World".',
+      title: 'Hello World JS',
+      slug: 'hello-world-js',
+      description: 'Return the string "Hello World".',
       difficulty: 'EASY',
-      topics: 'Components',
-      skillId: react.id,
+      topics: 'Fundamentals',
+      skillId: javascript.id,
       templateCode: {
-        javascript:
-          'import React from "react";\n\nconst Welcome = () => {\n  // Write your code here\n};',
+        javascript: 'function getGreeting() {\n  // Write your code here\n}',
       },
       testCases: [{ input: '', output: 'Hello World' }],
-    },
-  });
-
-  await prisma.challenge.upsert({
-    where: { slug: 'counter-react' },
-    update: {},
-    create: {
-      title: 'Counter Hook',
-      slug: 'counter-react',
-      description: 'Implement a counter using useState hook.',
-      difficulty: 'MEDIUM',
-      topics: 'State Management',
-      skillId: react.id,
-      templateCode: {
-        javascript:
-          'import React, { useState } from "react";\n\nconst Counter = () => {\n  // Write your code here\n};',
-      },
-      testCases: [{ input: 'increment', output: '1' }],
     },
   });
 

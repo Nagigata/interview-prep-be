@@ -51,10 +51,10 @@ function parseExampleText(
 }
 
 async function main() {
-  console.log('🚀 Starting LeetCode Import (Rich Fields Mode)...');
+  console.log('Starting LeetCode Import (Rich Fields Mode)...');
 
   if (!fs.existsSync(LEETCODE_JSON_PATH)) {
-    console.error(`❌ Error: File not found at ${LEETCODE_JSON_PATH}`);
+    console.error(`Error: File not found at ${LEETCODE_JSON_PATH}`);
     return;
   }
 
@@ -63,7 +63,7 @@ async function main() {
   const allProblems = jsonData.questions;
 
   if (!Array.isArray(allProblems)) {
-    console.error('❌ Error: "questions" is not an array.');
+    console.error('Error: "questions" is not an array.');
     return;
   }
 
@@ -72,17 +72,19 @@ async function main() {
   // 1. Ensure "Algorithms" skill exists
   const algoSkill = await prisma.skill.upsert({
     where: { slug: 'algorithms' },
-    update: {},
+    update: {
+      icon: 'https://cdn.simpleicons.org/leetcode/FFA116',
+    },
     create: {
       name: 'Algorithms',
       slug: 'algorithms',
       description:
         'Master competitive programming and algorithmic thinking with top LeetCode challenges.',
-      icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/github/github-original.svg',
+      icon: 'https://cdn.simpleicons.org/leetcode/FFA116',
     },
   });
 
-  console.log(`✅ "Algorithms" skill verified (ID: ${algoSkill.id})`);
+  console.log(`"Algorithms" skill verified (ID: ${algoSkill.id})`);
 
   let count = 0;
   let failed = 0;
@@ -167,17 +169,15 @@ async function main() {
       });
       count++;
       if (count % 10 === 0) {
-        console.log(
-          `📦 Imported ${count}/${sampleProblems.length} problems...`,
-        );
+        console.log(`Imported ${count}/${sampleProblems.length} problems...`);
       }
     } catch (err: any) {
       failed++;
-      console.error(`⚠️  Failed to import: ${prob.title} — ${err.message}`);
+      console.error(`Failed to import: ${prob.title} — ${err.message}`);
     }
   }
 
-  console.log(`\n✨ Import complete! Success: ${count}, Failed: ${failed}`);
+  console.log(`\n Import complete! Success: ${count}, Failed: ${failed}`);
 }
 
 main()
