@@ -10,6 +10,7 @@ import { FeedbacksModule } from './modules/feedbacks/feedbacks.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { ChallengesModule } from './modules/challenges/challenges.module';
 import { SubmissionsModule } from './modules/submissions/submissions.module';
+import { MailModule } from './shared/mail/mail.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { SubmissionsModule } from './modules/submissions/submissions.module';
     FeedbacksModule,
     ChallengesModule,
     SubmissionsModule,
+    MailModule,
   ],
   providers: [
     {

@@ -7,6 +7,7 @@ export class ChallengesService {
 
   async getAllSkills() {
     return this.prisma.skill.findMany({
+      where: { slug: { not: 'algorithms' } },
       orderBy: { name: 'asc' },
       include: {
         _count: {
@@ -150,9 +151,16 @@ export class ChallengesService {
       topics?: string[];
       status?: string[];
       skillSlug?: string;
+      page?: number;
+      limit?: number;
+      search?: string;
     },
   ) {
     const where: any = {};
+
+    if (filters?.search) {
+      where.title = { contains: filters.search, mode: 'insensitive' };
+    }
 
     if (filters?.difficulty?.length) {
       where.difficulty = { in: filters.difficulty };
@@ -167,12 +175,28 @@ export class ChallengesService {
 
 
 
-    if (filters?.skillSlug) {
-      const skill = await this.prisma.skill.findUnique({
-        where: { slug: filters.skillSlug },
-      });
-      if (skill) {
-        where.skillId = skill.id;
+    const targetSkillSlug = filters?.skillSlug || 'algorithms';
+    const skill = await this.prisma.skill.findUnique({
+      where: { slug: targetSkillSlug },
+    });
+    if (skill) {
+      where.skillId = skill.id;
+    }
+
+    if (filters?.status?.length) {
+      const statusFilters = filters.status.map((s) => s.toUpperCase());
+      const hasSolved = statusFilters.includes('SOLVED');
+      const hasUnsolved = statusFilters.includes('UNSOLVED');
+      const hasStarred = statusFilters.includes('STARRED');
+
+      if (hasStarred) {
+        where.stars = { some: { userId } };
+      }
+
+      if (hasSolved && !hasUnsolved) {
+        where.submissions = { some: { userId, status: 'ACCEPTED' } };
+      } else if (!hasSolved && hasUnsolved) {
+        where.submissions = { none: { userId, status: 'ACCEPTED' } };
       }
     }
 
@@ -188,11 +212,20 @@ export class ChallengesService {
       };
     }
 
-    const challenges = await this.prisma.challenge.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: Object.keys(include).length > 0 ? include : undefined,
-    });
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 100;
+    const skip = (page - 1) * limit;
+
+    const [challenges, total] = await Promise.all([
+      this.prisma.challenge.findMany({
+        where,
+        orderBy: { createdAt: 'asc' },
+        skip,
+        take: limit,
+        include: Object.keys(include).length > 0 ? include : undefined,
+      }),
+      this.prisma.challenge.count({ where }),
+    ]);
 
     let resultChallenges = challenges.map((c) => ({
       id: c.id,
@@ -205,20 +238,27 @@ export class ChallengesService {
       isStarred: (c as any).stars?.length > 0,
     }));
 
-    if (filters?.status?.length) {
-      const statusFilters = filters.status.map((s) => s.toUpperCase());
-      const hasSolved = statusFilters.includes('SOLVED');
-      const hasUnsolved = statusFilters.includes('UNSOLVED');
+    return { data: resultChallenges, total };
+  }
 
-      if (!(hasSolved && hasUnsolved)) {
-        resultChallenges = resultChallenges.filter((c) => {
-          if (hasSolved) return c.isSolved;
-          if (hasUnsolved) return !c.isSolved;
-          return true;
+  async getUniqueTopics() {
+    const records = await this.prisma.challenge.findMany({
+      where: {
+        skill: { slug: 'algorithms' }
+      },
+      select: { topics: true },
+    });
+
+    const topicSet = new Set<string>();
+    records.forEach(r => {
+      if (r.topics) {
+        r.topics.split(',').forEach(t => {
+          const trimmed = t.trim();
+          if (trimmed) topicSet.add(trimmed);
         });
       }
-    }
+    });
 
-    return resultChallenges;
+    return Array.from(topicSet).sort();
   }
 }

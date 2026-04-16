@@ -67,7 +67,7 @@ async function main() {
     return;
   }
 
-  const sampleProblems = allProblems.slice(0, 100);
+  const sampleProblems = allProblems;
 
   // 1. Ensure "Algorithms" skill exists
   const algoSkill = await prisma.skill.upsert({
