@@ -4,6 +4,8 @@ import { PrismaService } from '../../shared/prisma/prisma.service';
 type PaginationParams = {
   page?: number;
   limit?: number;
+  status?: string[];
+  difficulty?: string[];
 };
 
 @Injectable()
@@ -81,6 +83,11 @@ export class UsersService {
               id: true,
               title: true,
               difficulty: true,
+              skill: {
+                select: {
+                  slug: true,
+                },
+              },
             },
           },
         },
@@ -181,6 +188,7 @@ export class UsersService {
         challengeId: submission.challengeId,
         challengeTitle: submission.challenge.title,
         difficulty: submission.challenge.difficulty,
+        skillSlug: submission.challenge.skill.slug,
         language: submission.language,
         status: submission.status,
         submittedAt: submission.createdAt,
@@ -225,10 +233,67 @@ export class UsersService {
     const page = Math.max(params.page || 1, 1);
     const limit = Math.min(Math.max(params.limit || 10, 1), 50);
     const skip = (page - 1) * limit;
+    const normalizedStatuses = (params.status || []).map((status) =>
+      status.toUpperCase(),
+    );
+    const normalizedDifficulties = params.difficulty || [];
+
+    const acceptedSubmissions = await this.prisma.challengeSubmission.findMany({
+      where: {
+        userId,
+        status: 'ACCEPTED',
+      },
+      select: {
+        challengeId: true,
+      },
+    });
+
+    const solvedChallengeIds = new Set(
+      acceptedSubmissions.map((submission) => submission.challengeId),
+    );
+
+    const starredWhere: any = {
+      userId,
+    };
+
+    if (normalizedDifficulties.length > 0) {
+      starredWhere.challenge = {
+        difficulty: {
+          in: normalizedDifficulties,
+        },
+      };
+    }
+
+    if (normalizedStatuses.length > 0) {
+      const hasSolved = normalizedStatuses.includes('SOLVED');
+      const hasUnsolved = normalizedStatuses.includes('UNSOLVED');
+
+      if (hasSolved && !hasUnsolved) {
+        starredWhere.challenge = {
+          ...(starredWhere.challenge || {}),
+          submissions: {
+            some: {
+              userId,
+              status: 'ACCEPTED',
+            },
+          },
+        };
+      } else if (!hasSolved && hasUnsolved) {
+        starredWhere.challenge = {
+          ...(starredWhere.challenge || {}),
+          submissions: {
+            none: {
+              userId,
+              status: 'ACCEPTED',
+            },
+          },
+        };
+      }
+    }
 
     const [items, total] = await Promise.all([
       this.prisma.challengeStar.findMany({
-        where: { userId },
+        where: starredWhere,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
@@ -251,23 +316,25 @@ export class UsersService {
           },
         },
       }),
-      this.prisma.challengeStar.count({ where: { userId } }),
+      this.prisma.challengeStar.count({ where: starredWhere }),
     ]);
 
+    const mappedItems = items.map((item) => ({
+      id: item.challenge.id,
+      title: item.challenge.title,
+      slug: item.challenge.slug,
+      description: item.challenge.description,
+      difficulty: item.challenge.difficulty,
+      topics: item.challenge.topics,
+      skillSlug: item.challenge.skill.slug,
+      skillName: item.challenge.skill.name,
+      isSolved: solvedChallengeIds.has(item.challenge.id),
+      isStarred: true,
+      starredAt: item.createdAt,
+    }));
+
     return {
-      items: items.map((item) => ({
-        id: item.challenge.id,
-        title: item.challenge.title,
-        slug: item.challenge.slug,
-        description: item.challenge.description,
-        difficulty: item.challenge.difficulty,
-        topics: item.challenge.topics,
-        skillSlug: item.challenge.skill.slug,
-        skillName: item.challenge.skill.name,
-        isSolved: false,
-        isStarred: true,
-        starredAt: item.createdAt,
-      })),
+      items: mappedItems,
       page,
       limit,
       total,
@@ -353,6 +420,11 @@ export class UsersService {
               id: true,
               title: true,
               difficulty: true,
+              skill: {
+                select: {
+                  slug: true,
+                },
+              },
             },
           },
         },
@@ -368,6 +440,7 @@ export class UsersService {
         challengeId: submission.challengeId,
         challengeTitle: submission.challenge.title,
         difficulty: submission.challenge.difficulty,
+        skillSlug: submission.challenge.skill.slug,
         language: submission.language,
         status: submission.status,
         runtime: submission.runtime,

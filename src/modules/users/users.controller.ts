@@ -81,10 +81,18 @@ export class UsersController {
     @CurrentUser('id') userId: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('status') status?: string | string[],
+    @Query('difficulty') difficulty?: string | string[],
   ) {
     return this.usersService.getStarredChallenges(userId, {
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 10,
+      status: Array.isArray(status) ? status : status ? [status] : [],
+      difficulty: Array.isArray(difficulty)
+        ? difficulty
+        : difficulty
+          ? [difficulty]
+          : [],
     });
   }
 
