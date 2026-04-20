@@ -187,11 +187,6 @@ export class ChallengesService {
       const statusFilters = filters.status.map((s) => s.toUpperCase());
       const hasSolved = statusFilters.includes('SOLVED');
       const hasUnsolved = statusFilters.includes('UNSOLVED');
-      const hasStarred = statusFilters.includes('STARRED');
-
-      if (hasStarred) {
-        where.stars = { some: { userId } };
-      }
 
       if (hasSolved && !hasUnsolved) {
         where.submissions = { some: { userId, status: 'ACCEPTED' } };

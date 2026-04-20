@@ -454,6 +454,62 @@ export class UsersService {
     };
   }
 
+  async getRecommendedSkills(userId: string, limit = 3) {
+    const normalizedLimit = Math.min(Math.max(limit || 3, 1), 10);
+
+    const [skills, recentSubmissions] = await Promise.all([
+      this.prisma.skill.findMany({
+        include: {
+          _count: {
+            select: {
+              challenges: true,
+            },
+          },
+        },
+      }),
+      this.prisma.challengeSubmission.findMany({
+        where: {
+          userId,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: 50,
+        select: {
+          challenge: {
+            select: {
+              skill: {
+                select: {
+                  slug: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const scoreMap = new Map<string, number>();
+
+    recentSubmissions.forEach((submission, index) => {
+      const score = recentSubmissions.length - index;
+      const skillSlug = submission.challenge.skill.slug;
+      scoreMap.set(skillSlug, (scoreMap.get(skillSlug) || 0) + score);
+    });
+
+    const rankedSkills = [...skills].sort((a, b) => {
+      const scoreDiff = (scoreMap.get(b.slug) || 0) - (scoreMap.get(a.slug) || 0);
+
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+
+      return (b._count?.challenges || 0) - (a._count?.challenges || 0);
+    });
+
+    return rankedSkills.slice(0, normalizedLimit);
+  }
+
   private getAvatarPublicUrl(filename: string) {
     const port = process.env.PORT || '3001';
     const baseUrl = process.env.APP_URL || `http://localhost:${port}`;

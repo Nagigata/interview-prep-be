@@ -119,4 +119,15 @@ export class UsersController {
       limit: limit ? parseInt(limit, 10) : 20,
     });
   }
+
+  @Get('me/recommended-skills')
+  async getRecommendedSkills(
+    @CurrentUser('id') userId: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.usersService.getRecommendedSkills(
+      userId,
+      limit ? parseInt(limit, 10) : 3,
+    );
+  }
 }
