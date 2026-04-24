@@ -18,11 +18,6 @@ export class InterviewsService {
   async findById(id: string) {
     const interview = await this.prisma.interview.findUnique({
       where: { id },
-      include: {
-        transcripts: {
-          orderBy: { sequence: 'asc' },
-        },
-      },
     });
 
     if (!interview) {
@@ -65,27 +60,63 @@ export class InterviewsService {
     });
   }
 
-  async saveTranscripts(
-    interviewId: string,
-    transcripts: { role: string; content: string }[],
-  ) {
-    // Validate interview exists
+  async createAttempt(interviewId: string, userId: string) {
     await this.findById(interviewId);
 
-    // Delete existing transcripts for this interview (in case of retake)
+    return this.prisma.interviewAttempt.create({
+      data: {
+        interviewId,
+        userId,
+      },
+    });
+  }
+
+  async findAttemptById(id: string) {
+    const attempt = await this.prisma.interviewAttempt.findUnique({
+      where: { id },
+      include: {
+        interview: true,
+        transcripts: {
+          orderBy: { sequence: 'asc' },
+        },
+      },
+    });
+
+    if (!attempt) {
+      throw new NotFoundException('Interview attempt not found');
+    }
+
+    return attempt;
+  }
+
+  async saveTranscripts(
+    attemptId: string,
+    transcripts: { role: string; content: string }[],
+  ) {
+    // Validate attempt exists
+    await this.findAttemptById(attemptId);
+
+    // Replace transcripts for this attempt
     await this.prisma.transcript.deleteMany({
-      where: { interviewId },
+      where: { attemptId },
     });
 
     // Create new transcripts
     const data = transcripts.map((t, index) => ({
-      interviewId,
+      attemptId,
       role: t.role,
       content: t.content,
       sequence: index + 1,
     }));
 
     await this.prisma.transcript.createMany({ data });
+
+    await this.prisma.interviewAttempt.update({
+      where: { id: attemptId },
+      data: {
+        completedAt: new Date(),
+      },
+    });
 
     return { count: data.length };
   }

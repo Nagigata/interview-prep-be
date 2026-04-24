@@ -22,4 +22,12 @@ export class FeedbacksController {
   ) {
     return this.feedbacksService.findByInterviewId(interviewId, user.id);
   }
+
+  @Get('attempt/:attemptId')
+  async findByAttempt(
+    @CurrentUser() user: { id: string },
+    @Param('attemptId') attemptId: string,
+  ) {
+    return this.feedbacksService.findByAttemptId(attemptId, user.id);
+  }
 }

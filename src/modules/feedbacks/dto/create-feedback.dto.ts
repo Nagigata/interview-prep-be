@@ -14,7 +14,7 @@ class TranscriptItemDto {
 export class CreateFeedbackDto {
   @IsString()
   @IsNotEmpty()
-  interviewId: string;
+  attemptId: string;
 
   @IsArray()
   @ValidateNested({ each: true })

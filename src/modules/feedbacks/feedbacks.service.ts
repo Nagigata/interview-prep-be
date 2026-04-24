@@ -15,24 +15,27 @@ export class FeedbacksService {
   ) {}
 
   async create(userId: string, createFeedbackDto: CreateFeedbackDto) {
-    const { interviewId, transcript } = createFeedbackDto;
+    const { attemptId, transcript } = createFeedbackDto;
 
-    // Validate interview exists
-    const interview = await this.interviewsService.findById(interviewId);
+    // Validate interview attempt exists
+    const attempt = await this.interviewsService.findAttemptById(attemptId);
+    const { interview } = attempt;
+    const interviewId = interview.id;
 
-    // Check if feedback already exists for this interview
+    // Check if feedback already exists for this attempt
     const existing = await this.prisma.feedback.findUnique({
-      where: { interviewId },
+      where: { attemptId },
     });
 
     // Save transcripts
-    await this.interviewsService.saveTranscripts(interviewId, transcript);
+    await this.interviewsService.saveTranscripts(attemptId, transcript);
 
     // Generate feedback using AI
-    this.logger.log(`Generating AI feedback for interview: ${interviewId}`);
+    this.logger.log(`Generating AI feedback for attempt: ${attemptId}`);
     const aiResult = await this.aiService.generateFeedback(transcript, interview.language);
 
     const feedbackData = {
+      attemptId,
       interviewId,
       userId,
       totalScore: aiResult.totalScore,
@@ -84,6 +87,19 @@ export class FeedbacksService {
     return this.prisma.feedback.findFirst({
       where: {
         interviewId,
+        userId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      include: { categoryScores: true },
+    });
+  }
+
+  async findByAttemptId(attemptId: string, userId: string) {
+    return this.prisma.feedback.findFirst({
+      where: {
+        attemptId,
         userId,
       },
       include: { categoryScores: true },

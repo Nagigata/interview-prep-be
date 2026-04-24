@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -44,10 +45,21 @@ async function bootstrap() {
     prefix: '/uploads/',
   });
 
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('AI Mock Interview API')
+    .setDescription('API documentation for the AI Mock Interview backend')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api/docs', app, swaggerDocument);
+
   const port = process.env.PORT || 3001;
   await app.listen(port);
 
-  logger.log(`🚀 Backend is running on http://localhost:${port}/api`);
+  logger.log(`Backend is running on http://localhost:${port}/api`);
+  logger.log(`Swagger docs available at http://localhost:${port}/api/docs`);
 }
 
 bootstrap();

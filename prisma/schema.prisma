@@ -22,6 +22,7 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   interviews Interview[]
+  interviewAttempts InterviewAttempt[]
   feedbacks  Feedback[]
   challengeSubmissions ChallengeSubmission[]
   challengeStars      ChallengeStar[]
@@ -42,29 +43,46 @@ model Interview {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  user        User         @relation(fields: [userId], references: [id])
-  transcripts Transcript[]
-  feedback    Feedback?
+  user      User               @relation(fields: [userId], references: [id])
+  attempts  InterviewAttempt[]
+  feedbacks Feedback[]
 
   @@map("interviews")
 }
 
-model Transcript {
+model InterviewAttempt {
   id          String   @id @default(uuid())
   interviewId String   @map("interview_id")
+  userId      String   @map("user_id")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  interview   Interview    @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcripts Transcript[]
+  feedback    Feedback?
+
+  @@map("interview_attempts")
+}
+
+model Transcript {
+  id          String   @id @default(uuid())
+  attemptId    String   @map("attempt_id")
   role        String   // "user" | "assistant"
   content     String
   sequence    Int
   createdAt   DateTime @default(now()) @map("created_at")
 
-  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  attempt InterviewAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@map("transcripts")
 }
 
 model Feedback {
   id                  String   @id @default(uuid())
-  interviewId         String   @unique @map("interview_id")
+  attemptId           String   @unique @map("attempt_id")
+  interviewId         String   @map("interview_id")
   userId              String   @map("user_id")
   totalScore          Int      @map("total_score")
   strengths           String[]
@@ -73,6 +91,7 @@ model Feedback {
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
+  attempt        InterviewAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   interview      Interview       @relation(fields: [interviewId], references: [id], onDelete: Cascade)
   user           User            @relation(fields: [userId], references: [id])
   categoryScores CategoryScore[]

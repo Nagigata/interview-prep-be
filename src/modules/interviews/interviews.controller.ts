@@ -52,7 +52,15 @@ export class InterviewsController {
     return this.interviewsService.update(id, updateData);
   }
 
-  @Post(':id/transcripts')
+  @Post(':id/attempts')
+  async createAttempt(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ) {
+    return this.interviewsService.createAttempt(id, user.id);
+  }
+
+  @Post('attempts/:id/transcripts')
   async saveTranscripts(
     @Param('id') id: string,
     @Body() body: { transcripts: { role: string; content: string }[] },
