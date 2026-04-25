@@ -71,6 +71,37 @@ export class InterviewsService {
     });
   }
 
+  async findAttemptsByInterviewId(interviewId: string, userId: string) {
+    await this.findById(interviewId);
+
+    const attempts = await this.prisma.interviewAttempt.findMany({
+      where: {
+        interviewId,
+        userId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      include: {
+        feedback: {
+          include: {
+            categoryScores: true,
+          },
+        },
+        _count: {
+          select: {
+            transcripts: true,
+          },
+        },
+      },
+    });
+
+    return attempts.map(({ _count, ...attempt }) => ({
+      ...attempt,
+      transcriptCount: _count.transcripts,
+    }));
+  }
+
   async findAttemptById(id: string) {
     const attempt = await this.prisma.interviewAttempt.findUnique({
       where: { id },
@@ -78,6 +109,32 @@ export class InterviewsService {
         interview: true,
         transcripts: {
           orderBy: { sequence: 'asc' },
+        },
+      },
+    });
+
+    if (!attempt) {
+      throw new NotFoundException('Interview attempt not found');
+    }
+
+    return attempt;
+  }
+
+  async findAttemptByIdForUser(id: string, userId: string) {
+    const attempt = await this.prisma.interviewAttempt.findFirst({
+      where: {
+        id,
+        userId,
+      },
+      include: {
+        interview: true,
+        transcripts: {
+          orderBy: { sequence: 'asc' },
+        },
+        feedback: {
+          include: {
+            categoryScores: true,
+          },
         },
       },
     });

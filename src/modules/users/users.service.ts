@@ -12,7 +12,8 @@ type PaginationParams = {
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findById(id: string) {
+  async findById(id: string, timezone?: string) {
+    const userTimezone = this.normalizeTimezone(timezone);
     const oneYearAgo = new Date();
     oneYearAgo.setDate(oneYearAgo.getDate() - 364);
     oneYearAgo.setHours(0, 0, 0, 0);
@@ -146,11 +147,18 @@ export class UsersService {
 
     const activityMap = new Map<string, number>();
     yearlySubmissions.forEach((submission) => {
-      const dateKey = submission.createdAt.toISOString().slice(0, 10);
+      const dateKey = this.getDateKeyInTimezone(
+        submission.createdAt,
+        userTimezone,
+      );
       activityMap.set(dateKey, (activityMap.get(dateKey) || 0) + 1);
     });
 
-    const activityCalendar = this.buildActivityCalendar(oneYearAgo, activityMap);
+    const activityCalendar = this.buildActivityCalendar(
+      oneYearAgo,
+      activityMap,
+      userTimezone,
+    );
     const streakInfo = this.calculateStreaks(activityCalendar);
 
     return {
@@ -516,21 +524,23 @@ export class UsersService {
     return `${baseUrl}/uploads/avatars/${filename}`;
   }
 
-  private buildActivityCalendar(startDate: Date, activityMap: Map<string, number>) {
+  private buildActivityCalendar(
+    startDate: Date,
+    activityMap: Map<string, number>,
+    timezone: string,
+  ) {
     const calendar: { date: string; count: number; level: number }[] = [];
-    const cursor = new Date(startDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    let cursorKey = this.getDateKeyInTimezone(startDate, timezone);
+    const todayKey = this.getDateKeyInTimezone(new Date(), timezone);
 
-    while (cursor <= today) {
-      const dateKey = cursor.toISOString().slice(0, 10);
-      const count = activityMap.get(dateKey) || 0;
+    while (cursorKey <= todayKey) {
+      const count = activityMap.get(cursorKey) || 0;
       calendar.push({
-        date: dateKey,
+        date: cursorKey,
         count,
         level: this.getActivityLevel(count),
       });
-      cursor.setDate(cursor.getDate() + 1);
+      cursorKey = this.addOneDay(cursorKey);
     }
 
     return calendar;
@@ -575,5 +585,43 @@ export class UsersService {
     if (count <= 3) return 2;
     if (count <= 5) return 3;
     return 4;
+  }
+
+  private normalizeTimezone(timezone?: string) {
+    const fallback = 'UTC';
+
+    if (!timezone) {
+      return fallback;
+    }
+
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
+      return timezone;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private getDateKeyInTimezone(date: Date, timezone: string) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+
+    const values = Object.fromEntries(
+      parts
+        .filter((part) => part.type !== 'literal')
+        .map((part) => [part.type, part.value]),
+    );
+
+    return `${values.year}-${values.month}-${values.day}`;
+  }
+
+  private addOneDay(dateKey: string) {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day + 1));
+    return date.toISOString().slice(0, 10);
   }
 }

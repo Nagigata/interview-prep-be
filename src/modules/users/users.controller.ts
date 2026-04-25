@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Patch,
   Query,
   UploadedFile,
@@ -42,8 +43,11 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
-  async getProfile(@CurrentUser() user: { id: string }) {
-    return this.usersService.findById(user.id);
+  async getProfile(
+    @CurrentUser() user: { id: string },
+    @Headers('x-timezone') timezone?: string,
+  ) {
+    return this.usersService.findById(user.id, timezone);
   }
 
   @Patch('me')

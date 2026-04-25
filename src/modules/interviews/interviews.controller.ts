@@ -39,6 +39,22 @@ export class InterviewsController {
     );
   }
 
+  @Get(':id/attempts')
+  async findAttempts(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ) {
+    return this.interviewsService.findAttemptsByInterviewId(id, user.id);
+  }
+
+  @Get('attempts/:id')
+  async findAttempt(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ) {
+    return this.interviewsService.findAttemptByIdForUser(id, user.id);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.interviewsService.findById(id);

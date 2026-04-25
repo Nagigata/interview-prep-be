@@ -8,40 +8,40 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String?
-  provider  String?  @default("LOCAL")
-  providerId String? @map("provider_id")
-  avatarUrl String?  @map("avatar_url")
-  resetCode      String?  @map("reset_code")
-  resetCodeExpiry DateTime? @map("reset_code_expiry")
-  resetToken     String?  @map("reset_token")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id              String    @id @default(uuid())
+  name            String
+  email           String    @unique
+  password        String?
+  provider        String?   @default("LOCAL")
+  providerId      String?   @map("provider_id")
+  avatarUrl       String?   @map("avatar_url")
+  resetCode       String?   @map("reset_code")
+  resetCodeExpiry DateTime? @map("reset_code_expiry") @db.Timestamptz(3)
+  resetToken      String?   @map("reset_token")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  interviews Interview[]
-  interviewAttempts InterviewAttempt[]
-  feedbacks  Feedback[]
+  interviews           Interview[]
+  interviewAttempts    InterviewAttempt[]
+  feedbacks            Feedback[]
   challengeSubmissions ChallengeSubmission[]
-  challengeStars      ChallengeStar[]
+  challengeStars       ChallengeStar[]
 
   @@map("users")
 }
 
 model Interview {
-  id         String   @id @default(uuid())
-  userId     String   @map("user_id")
-  role       String
-  level      String
-  type       String
-  techstack  String[]
-  questions  String[]
-  language   String   @default("en")
-  finalized  Boolean  @default(false)
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  role      String
+  level     String
+  type      String
+  techstack String[]
+  questions String[]
+  language  String   @default("en")
+  finalized Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user      User               @relation(fields: [userId], references: [id])
   attempts  InterviewAttempt[]
@@ -51,12 +51,12 @@ model Interview {
 }
 
 model InterviewAttempt {
-  id          String   @id @default(uuid())
-  interviewId String   @map("interview_id")
-  userId      String   @map("user_id")
-  completedAt DateTime? @map("completed_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id          String    @id @default(uuid())
+  interviewId String    @map("interview_id")
+  userId      String    @map("user_id")
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   interview   Interview    @relation(fields: [interviewId], references: [id], onDelete: Cascade)
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -67,12 +67,12 @@ model InterviewAttempt {
 }
 
 model Transcript {
-  id          String   @id @default(uuid())
-  attemptId    String   @map("attempt_id")
-  role        String   // "user" | "assistant"
-  content     String
-  sequence    Int
-  createdAt   DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid())
+  attemptId String   @map("attempt_id")
+  role      String // "user" | "assistant"
+  content   String
+  sequence  Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   attempt InterviewAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
@@ -88,12 +88,12 @@ model Feedback {
   strengths           String[]
   areasForImprovement String[] @map("areas_for_improvement")
   finalAssessment     String   @map("final_assessment")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   attempt        InterviewAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  interview      Interview       @relation(fields: [interviewId], references: [id], onDelete: Cascade)
-  user           User            @relation(fields: [userId], references: [id])
+  interview      Interview        @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id])
   categoryScores CategoryScore[]
 
   @@map("feedbacks")
@@ -123,8 +123,8 @@ model Skill {
   slug        String   @unique
   description String?  @db.Text
   icon        String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   challenges Challenge[]
 
@@ -146,8 +146,8 @@ model Challenge {
   followUps    Json?      @map("follow_ups")
   templateCode Json       @map("template_code")
   testCases    Json       @map("test_cases")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   skill       Skill                 @relation(fields: [skillId], references: [id])
   submissions ChallengeSubmission[]
@@ -166,18 +166,19 @@ model ChallengeSubmission {
   runtime      Int?
   memory       Int?
   errorMessage String?  @map("error_message") @db.Text
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   challenge Challenge @relation(fields: [challengeId], references: [id])
   user      User      @relation(fields: [userId], references: [id])
 
   @@map("challenge_submissions")
 }
+
 model ChallengeStar {
   id          String   @id @default(uuid())
   userId      String   @map("user_id")
   challengeId String   @map("challenge_id")
-  createdAt   DateTime @default(now()) @map("created_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user      User      @relation(fields: [userId], references: [id])
   challenge Challenge @relation(fields: [challengeId], references: [id])
