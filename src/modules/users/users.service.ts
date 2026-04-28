@@ -36,6 +36,7 @@ export class UsersService {
           id: true,
           name: true,
           email: true,
+          role: true,
           avatarUrl: true,
           createdAt: true,
         },
@@ -519,9 +520,7 @@ export class UsersService {
   }
 
   private getAvatarPublicUrl(filename: string) {
-    const port = process.env.PORT || '3001';
-    const baseUrl = process.env.APP_URL || `http://localhost:${port}`;
-    return `${baseUrl}/uploads/avatars/${filename}`;
+    return `/uploads/avatars/${filename}`;
   }
 
   private buildActivityCalendar(

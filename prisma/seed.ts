@@ -1,11 +1,26 @@
 import { PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('Seeding data...');
 
-  // 1. Dọn dẹp Challenges cũ nếu có (Tránh trùng lặp slug khi chạy nhiều lần)
+  // 0. Seed admin account
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@prepwise.com';
+  const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
+  const adminPassword = await bcrypt.hash(adminPass, 10);
+  await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: { role: 'ADMIN' },
+    create: {
+      name: 'Admin',
+      email: adminEmail,
+      password: adminPassword,
+      role: 'ADMIN',
+    },
+  });
+  console.log(`✅ Admin account seeded (${adminEmail})`);
   await prisma.challenge.deleteMany({
     where: {
       slug: {

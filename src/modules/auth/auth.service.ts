@@ -87,6 +87,7 @@ export class AuthService {
       sub: user.id, // Subject matches JwtStrategy
       email: user.email,
       name: user.name,
+      role: user.role || 'USER',
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -97,6 +98,7 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: user.role || 'USER',
       },
     };
   }
@@ -114,6 +116,7 @@ export class AuthService {
       id: user.id,
       name: user.name,
       email: user.email,
+      role: user.role,
     };
   }
 
@@ -138,18 +141,25 @@ export class AuthService {
           avatarUrl: profile.avatarUrl,
         },
       });
-    } else if (!user.providerId) {
-      // Link account if they previously signed up with email/password
-      user = await this.prisma.user.update({
-        where: { id: user.id },
-        data: {
-          provider: profile.provider,
-          providerId: profile.providerId,
-          ...(profile.avatarUrl && !user.avatarUrl
-            ? { avatarUrl: profile.avatarUrl }
-            : {}),
-        },
-      });
+    } else {
+      // Update provider info and avatar if needed
+      const updateData: Record<string, any> = {};
+
+      if (!user.provider || user.provider === 'LOCAL') {
+        updateData.provider = profile.provider;
+        updateData.providerId = profile.providerId;
+      }
+
+      if (profile.avatarUrl && !user.avatarUrl) {
+        updateData.avatarUrl = profile.avatarUrl;
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: updateData,
+        });
+      }
     }
 
     // Reuse the generic token generator
@@ -199,8 +209,9 @@ export class AuthService {
       throw new BadRequestException('Invalid verification code.');
     }
 
-    // Generate a one-time reset token
+    // Generate a one-time reset token with 15-minute expiry
     const resetToken = crypto.randomUUID();
+    const resetTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -208,6 +219,7 @@ export class AuthService {
         resetCode: null,
         resetCodeExpiry: null,
         resetToken,
+        resetTokenExpiry,
       },
     });
 
@@ -223,6 +235,15 @@ export class AuthService {
       throw new BadRequestException('Invalid or expired reset token.');
     }
 
+    if (!user.resetTokenExpiry || new Date() > user.resetTokenExpiry) {
+      // Clean up expired or legacy token without expiry
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { resetToken: null, resetTokenExpiry: null },
+      });
+      throw new BadRequestException('Reset token has expired. Please request a new one.');
+    }
+
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     await this.prisma.user.update({
@@ -230,6 +251,7 @@ export class AuthService {
       data: {
         password: hashedPassword,
         resetToken: null,
+        resetTokenExpiry: null,
       },
     });
 

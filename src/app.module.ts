@@ -11,6 +11,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { ChallengesModule } from './modules/challenges/challenges.module';
 import { SubmissionsModule } from './modules/submissions/submissions.module';
 import { MailModule } from './shared/mail/mail.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { MailModule } from './shared/mail/mail.module';
     ChallengesModule,
     SubmissionsModule,
     MailModule,
+    AdminModule,
   ],
   providers: [
     {
@@ -34,3 +36,4 @@ import { MailModule } from './shared/mail/mail.module';
   ],
 })
 export class AppModule {}
+

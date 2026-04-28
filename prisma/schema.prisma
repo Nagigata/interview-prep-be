@@ -7,17 +7,24 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  USER
+  ADMIN
+}
+
 model User {
   id              String    @id @default(uuid())
   name            String
   email           String    @unique
   password        String?
+  role            Role      @default(USER)
   provider        String?   @default("LOCAL")
   providerId      String?   @map("provider_id")
   avatarUrl       String?   @map("avatar_url")
   resetCode       String?   @map("reset_code")
   resetCodeExpiry DateTime? @map("reset_code_expiry") @db.Timestamptz(3)
   resetToken      String?   @map("reset_token")
+  resetTokenExpiry DateTime? @map("reset_token_expiry") @db.Timestamptz(3)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
