@@ -47,7 +47,8 @@ async function main() {
     { name: 'C++', slug: 'cpp', desc: 'Object-oriented programming.', icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/cplusplus/cplusplus-original.svg' },
     { name: 'Java', slug: 'java', desc: 'Deep dive into OOP and JVM.', icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/java/java-original.svg' },
     { name: 'C#', slug: 'csharp', desc: 'Modern type-safe programming language.', icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/csharp/csharp-original.svg' },
-    { name: 'SQL', slug: 'sql', desc: 'Master relational databases.', icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/azuresqldatabase/azuresqldatabase-original.svg' }
+    { name: 'SQL', slug: 'sql', desc: 'Master relational databases.', icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/azuresqldatabase/azuresqldatabase-original.svg' },
+    { name: 'Algorithms', slug: 'algorithms', desc: 'Data structures and algorithm problems.', icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/thealgorithms/thealgorithms-original.svg' },
   ];
 
   const skillDocs: Record<string, any> = {};

@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -37,6 +38,11 @@ export class InterviewsController {
       user.id,
       limit ? parseInt(limit, 10) : 20,
     );
+  }
+
+  @Get('attempted')
+  async findAttempted(@CurrentUser() user: { id: string }) {
+    return this.interviewsService.findAttemptedByUserId(user.id);
   }
 
   @Get(':id/attempts')
@@ -82,5 +88,13 @@ export class InterviewsController {
     @Body() body: { transcripts: { role: string; content: string }[] },
   ) {
     return this.interviewsService.saveTranscripts(id, body.transcripts);
+  }
+
+  @Delete(':id')
+  async remove(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ) {
+    return this.interviewsService.deleteInterview(id, user.id);
   }
 }

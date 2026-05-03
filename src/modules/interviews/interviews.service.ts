@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { CreateInterviewDto } from './dto/create-interview.dto';
 
@@ -176,5 +180,72 @@ export class InterviewsService {
     });
 
     return { count: data.length };
+  }
+
+  async findAttemptedByUserId(userId: string) {
+    const attempts = await this.prisma.interviewAttempt.findMany({
+      where: { userId },
+      select: { interviewId: true },
+      distinct: ['interviewId'],
+    });
+
+    const interviewIds = attempts.map((a) => a.interviewId);
+    if (interviewIds.length === 0) return [];
+
+    return this.prisma.interview.findMany({
+      where: {
+        id: { in: interviewIds },
+        userId: { not: userId },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async deleteInterview(interviewId: string, userId: string) {
+    const interview = await this.prisma.interview.findUnique({
+      where: { id: interviewId },
+      include: {
+        _count: { select: { attempts: true } },
+      },
+    });
+
+    if (!interview) {
+      throw new NotFoundException('Interview not found');
+    }
+
+    if (interview.userId !== userId) {
+      throw new ForbiddenException('You can only delete your own interviews');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Get all attempt IDs for this interview
+      const attempts = await tx.interviewAttempt.findMany({
+        where: { interviewId },
+        select: { id: true },
+      });
+      const attemptIds = attempts.map((a) => a.id);
+
+      if (attemptIds.length > 0) {
+        // 2. Delete category scores (via feedbacks)
+        await tx.categoryScore.deleteMany({
+          where: { feedback: { attemptId: { in: attemptIds } } },
+        });
+        // 3. Delete feedbacks
+        await tx.feedback.deleteMany({
+          where: { interviewId },
+        });
+        // 4. Delete transcripts
+        await tx.transcript.deleteMany({
+          where: { attemptId: { in: attemptIds } },
+        });
+        // 5. Delete attempts
+        await tx.interviewAttempt.deleteMany({
+          where: { interviewId },
+        });
+      }
+
+      // 6. Delete interview
+      return tx.interview.delete({ where: { id: interviewId } });
+    });
   }
 }
