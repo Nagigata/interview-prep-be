@@ -28,7 +28,14 @@ export class AdminService {
       this.prisma.user.findMany({
         orderBy: { createdAt: 'desc' },
         take: 5,
-        select: { id: true, name: true, email: true, role: true, createdAt: true },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          isActive: true,
+          createdAt: true,
+        },
       }),
       this.prisma.challengeSubmission.findMany({
         orderBy: { createdAt: 'desc' },
@@ -138,6 +145,7 @@ export class AdminService {
           name: true,
           email: true,
           role: true,
+          isActive: true,
           provider: true,
           avatarUrl: true,
           createdAt: true,
@@ -174,6 +182,7 @@ export class AdminService {
         name: true,
         email: true,
         role: true,
+        isActive: true,
         provider: true,
         avatarUrl: true,
         createdAt: true,
@@ -190,10 +199,13 @@ export class AdminService {
     });
   }
 
-  async updateUser(userId: string, data: { role?: string }) {
+  async updateUser(userId: string, data: { role?: string; isActive?: boolean }) {
     const updateData: any = {};
     if (data.role === 'ADMIN' || data.role === 'USER') {
       updateData.role = data.role;
+    }
+    if (typeof data.isActive === 'boolean') {
+      updateData.isActive = data.isActive;
     }
 
     return this.prisma.user.update({
@@ -204,6 +216,7 @@ export class AdminService {
         name: true,
         email: true,
         role: true,
+        isActive: true,
       },
     });
   }
@@ -280,10 +293,19 @@ export class AdminService {
         take: limit,
         select: {
           id: true,
+          skillId: true,
           title: true,
           slug: true,
+          description: true,
           difficulty: true,
           topics: true,
+          examples: true,
+          constraints: true,
+          hints: true,
+          solution: true,
+          followUps: true,
+          templateCode: true,
+          testCases: true,
           createdAt: true,
           skill: { select: { id: true, name: true, slug: true } },
           _count: { select: { submissions: true } },
@@ -317,6 +339,8 @@ export class AdminService {
     examples?: any;
     constraints?: any;
     hints?: any;
+    solution?: string;
+    followUps?: any;
   }) {
     return this.prisma.challenge.create({
       data: {
@@ -331,6 +355,8 @@ export class AdminService {
         examples: data.examples,
         constraints: data.constraints,
         hints: data.hints,
+        solution: data.solution,
+        followUps: data.followUps,
       },
     });
   }
@@ -339,6 +365,8 @@ export class AdminService {
     challengeId: string,
     data: {
       title?: string;
+      slug?: string;
+      skillId?: string;
       description?: string;
       difficulty?: string;
       topics?: string;
@@ -347,10 +375,14 @@ export class AdminService {
       examples?: any;
       constraints?: any;
       hints?: any;
+      solution?: string;
+      followUps?: any;
     },
   ) {
     const updateData: any = {};
+    if (data.skillId !== undefined) updateData.skillId = data.skillId;
     if (data.title !== undefined) updateData.title = data.title;
+    if (data.slug !== undefined) updateData.slug = data.slug;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.difficulty !== undefined) updateData.difficulty = data.difficulty;
     if (data.topics !== undefined) updateData.topics = data.topics;
@@ -359,6 +391,8 @@ export class AdminService {
     if (data.examples !== undefined) updateData.examples = data.examples;
     if (data.constraints !== undefined) updateData.constraints = data.constraints;
     if (data.hints !== undefined) updateData.hints = data.hints;
+    if (data.solution !== undefined) updateData.solution = data.solution;
+    if (data.followUps !== undefined) updateData.followUps = data.followUps;
 
     return this.prisma.challenge.update({
       where: { id: challengeId },

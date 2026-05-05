@@ -1,4 +1,12 @@
-import { IsString, IsNotEmpty, IsEnum, IsOptional, IsObject, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsEnum,
+  IsOptional,
+  IsObject,
+  IsArray,
+  IsBoolean,
+} from 'class-validator';
 
 export enum DifficultyEnum {
   EASY = 'EASY',
@@ -44,12 +52,27 @@ export class CreateChallengeDto {
 
   @IsOptional()
   hints?: any;
+
+  @IsString()
+  @IsOptional()
+  solution?: string;
+
+  @IsOptional()
+  followUps?: any;
 }
 
 export class UpdateChallengeDto {
   @IsString()
   @IsOptional()
+  skillId?: string;
+
+  @IsString()
+  @IsOptional()
   title?: string;
+
+  @IsString()
+  @IsOptional()
+  slug?: string;
 
   @IsString()
   @IsOptional()
@@ -79,6 +102,13 @@ export class UpdateChallengeDto {
 
   @IsOptional()
   hints?: any;
+
+  @IsString()
+  @IsOptional()
+  solution?: string;
+
+  @IsOptional()
+  followUps?: any;
 }
 
 export class CreateSkillDto {
@@ -115,5 +145,10 @@ export class UpdateSkillDto {
 
 export class UpdateUserRoleDto {
   @IsEnum(['USER', 'ADMIN'])
-  role: string;
+  @IsOptional()
+  role?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }

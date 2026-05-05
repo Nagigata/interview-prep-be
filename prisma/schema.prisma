@@ -18,6 +18,7 @@ model User {
   email           String    @unique
   password        String?
   role            Role      @default(USER)
+  isActive        Boolean   @default(true) @map("is_active")
   provider        String?   @default("LOCAL")
   providerId      String?   @map("provider_id")
   avatarUrl       String?   @map("avatar_url")

@@ -66,6 +66,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    if (!user.isActive) {
+      throw new UnauthorizedException(
+        'Your account has been deactivated. Please contact an administrator.',
+      );
+    }
+
     if (!user.password) {
       throw new UnauthorizedException(
         'Please sign in using your linked Google or GitHub account.',
@@ -99,6 +105,7 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role || 'USER',
+        isActive: user.isActive ?? true,
       },
     };
   }
@@ -112,11 +119,18 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
+    if (!user.isActive) {
+      throw new UnauthorizedException(
+        'Your account has been deactivated. Please contact an administrator.',
+      );
+    }
+
     return {
       id: user.id,
       name: user.name,
       email: user.email,
       role: user.role,
+      isActive: user.isActive,
     };
   }
 
@@ -160,6 +174,12 @@ export class AuthService {
           data: updateData,
         });
       }
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException(
+        'Your account has been deactivated. Please contact an administrator.',
+      );
     }
 
     // Reuse the generic token generator

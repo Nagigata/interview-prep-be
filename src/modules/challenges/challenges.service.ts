@@ -7,7 +7,6 @@ export class ChallengesService {
 
   async getAllSkills() {
     return this.prisma.skill.findMany({
-      where: { slug: { not: 'algorithms' } },
       orderBy: { name: 'asc' },
       include: {
         _count: {
@@ -65,6 +64,9 @@ export class ChallengesService {
         take: 1,
       };
     }
+    include.skill = {
+      select: { slug: true },
+    };
 
     const challenges = await this.prisma.challenge.findMany({
       where,

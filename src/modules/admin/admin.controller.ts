@@ -72,9 +72,12 @@ export class AdminController {
     @Body() body: UpdateUserRoleDto,
     @Req() req: any,
   ) {
-    // Prevent admin from demoting themselves
-    if (req.user?.id === id && body.role !== 'ADMIN') {
+    // Prevent admins from locking themselves out.
+    if (req.user?.id === id && body.role !== undefined && body.role !== 'ADMIN') {
       throw new ForbiddenException('Cannot change your own role.');
+    }
+    if (req.user?.id === id && body.isActive === false) {
+      throw new ForbiddenException('Cannot deactivate your own account.');
     }
     return this.adminService.updateUser(id, body);
   }
