@@ -48,6 +48,7 @@ model Interview {
   questions String[]
   language  String   @default("en")
   finalized Boolean  @default(false)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 

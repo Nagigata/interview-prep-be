@@ -42,6 +42,7 @@ export class InterviewsService {
     return this.prisma.interview.findMany({
       where: {
         finalized: true,
+        archivedAt: null,
         userId: { not: userId },
       },
       orderBy: { createdAt: 'desc' },
@@ -195,6 +196,7 @@ export class InterviewsService {
     return this.prisma.interview.findMany({
       where: {
         id: { in: interviewIds },
+        archivedAt: null,
         userId: { not: userId },
       },
       orderBy: { createdAt: 'desc' },

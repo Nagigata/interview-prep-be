@@ -106,6 +106,29 @@ export class AdminController {
     });
   }
 
+  @Get('interviews/:id')
+  async getInterviewDetail(@Param('id') id: string) {
+    return this.interviewsService.getInterviewDetail(id);
+  }
+
+  @Get('interviews/:id/attempts/:attemptId')
+  async getInterviewAttemptDetail(
+    @Param('id') id: string,
+    @Param('attemptId') attemptId: string,
+  ) {
+    return this.interviewsService.getAttemptDetail(id, attemptId);
+  }
+
+  @Patch('interviews/:id/archive')
+  async archiveInterview(@Param('id') id: string) {
+    return this.interviewsService.setInterviewArchived(id, true);
+  }
+
+  @Patch('interviews/:id/restore')
+  async restoreInterview(@Param('id') id: string) {
+    return this.interviewsService.setInterviewArchived(id, false);
+  }
+
   // ===== CHALLENGES =====
 
   @Get('challenges')
