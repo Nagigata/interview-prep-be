@@ -53,8 +53,8 @@ export class AdminController {
   }
 
   @Get('stats')
-  async getStats() {
-    return this.dashboardService.getStats();
+  async getStats(@Query('range') range?: string) {
+    return this.dashboardService.getStats(range);
   }
 
   // ===== USERS =====
@@ -64,10 +64,14 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('role') role?: string,
+    @Query('status') status?: string,
   ) {
     return this.usersService.getUsers({
       ...parsePagination(page, limit),
       search: search || undefined,
+      role: role || undefined,
+      status: status || undefined,
     });
   }
 
@@ -99,10 +103,16 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('type') type?: string,
+    @Query('level') level?: string,
   ) {
     return this.interviewsService.getInterviews({
       ...parsePagination(page, limit),
       search: search || undefined,
+      status: status || undefined,
+      type: type || undefined,
+      level: level || undefined,
     });
   }
 
@@ -136,10 +146,16 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('difficulty') difficulty?: string,
+    @Query('skillId') skillId?: string,
   ) {
     return this.challengesService.getChallenges({
       ...parsePagination(page, limit),
       search: search || undefined,
+      status: status || undefined,
+      difficulty: difficulty || undefined,
+      skillId: skillId || undefined,
     });
   }
 
@@ -161,8 +177,8 @@ export class AdminController {
   // ===== SKILLS =====
 
   @Get('skills')
-  async getSkills() {
-    return this.skillsService.getSkills();
+  async getSkills(@Query('status') status?: string) {
+    return this.skillsService.getSkills({ status: status || undefined });
   }
 
   @Post('skills')

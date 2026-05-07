@@ -5,8 +5,14 @@ import { PrismaService } from '../../../shared/prisma/prisma.service';
 export class AdminUsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getUsers(params: { page: number; limit: number; search?: string }) {
-    const { page, limit, search } = params;
+  async getUsers(params: {
+    page: number;
+    limit: number;
+    search?: string;
+    role?: string;
+    status?: string;
+  }) {
+    const { page, limit, search, role, status } = params;
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -15,6 +21,15 @@ export class AdminUsersService {
         { name: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
       ];
+    }
+    if (role === 'ADMIN' || role === 'USER') {
+      where.role = role;
+    }
+    if (status === 'active') {
+      where.isActive = true;
+    }
+    if (status === 'inactive') {
+      where.isActive = false;
     }
 
     const [items, total] = await Promise.all([

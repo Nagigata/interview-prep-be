@@ -83,8 +83,17 @@ export class AdminSkillsService {
     }
   }
 
-  async getSkills() {
+  async getSkills(params?: { status?: string }) {
+    const where: Prisma.SkillWhereInput = {};
+    if (params?.status === 'active') {
+      where.isActive = true;
+    }
+    if (params?.status === 'disabled') {
+      where.isActive = false;
+    }
+
     return this.prisma.skill.findMany({
+      where,
       orderBy: { name: 'asc' },
       include: {
         _count: { select: { challenges: true } },

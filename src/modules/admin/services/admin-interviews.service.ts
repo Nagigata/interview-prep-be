@@ -9,8 +9,11 @@ export class AdminInterviewsService {
     page: number;
     limit: number;
     search?: string;
+    status?: string;
+    type?: string;
+    level?: string;
   }) {
-    const { page, limit, search } = params;
+    const { page, limit, search, status, type, level } = params;
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -19,6 +22,24 @@ export class AdminInterviewsService {
         { role: { contains: search, mode: 'insensitive' } },
         { user: { name: { contains: search, mode: 'insensitive' } } },
       ];
+    }
+    if (status === 'active') {
+      where.archivedAt = null;
+    }
+    if (status === 'archived') {
+      where.archivedAt = { not: null };
+    }
+    if (type) {
+      where.type =
+        type.toLowerCase() === 'mixed'
+          ? { contains: 'mix', mode: 'insensitive' }
+          : { equals: type, mode: 'insensitive' };
+    }
+    if (level) {
+      where.level =
+        level.toLowerCase() === 'mid-level'
+          ? { contains: 'mid', mode: 'insensitive' }
+          : { equals: level, mode: 'insensitive' };
     }
 
     const [items, total] = await Promise.all([

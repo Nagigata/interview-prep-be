@@ -95,8 +95,15 @@ export class AdminChallengesService {
     }
   }
 
-  async getChallenges(params: { page: number; limit: number; search?: string }) {
-    const { page, limit, search } = params;
+  async getChallenges(params: {
+    page: number;
+    limit: number;
+    search?: string;
+    status?: string;
+    difficulty?: string;
+    skillId?: string;
+  }) {
+    const { page, limit, search, status, difficulty, skillId } = params;
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -105,6 +112,18 @@ export class AdminChallengesService {
         { title: { contains: search, mode: 'insensitive' } },
         { topics: { contains: search, mode: 'insensitive' } },
       ];
+    }
+    if (status === 'active') {
+      where.isActive = true;
+    }
+    if (status === 'disabled') {
+      where.isActive = false;
+    }
+    if (['EASY', 'MEDIUM', 'HARD'].includes(difficulty || '')) {
+      where.difficulty = difficulty;
+    }
+    if (skillId) {
+      where.skillId = skillId;
     }
 
     const [items, total] = await Promise.all([
