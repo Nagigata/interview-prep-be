@@ -7,10 +7,11 @@ export class ChallengesService {
 
   async getAllSkills() {
     return this.prisma.skill.findMany({
+      where: { isActive: true },
       orderBy: { name: 'asc' },
       include: {
         _count: {
-          select: { challenges: true },
+          select: { challenges: { where: { isActive: true } } },
         },
       },
     });
@@ -25,8 +26,8 @@ export class ChallengesService {
       status?: string[];
     },
   ) {
-    const skill = await this.prisma.skill.findUnique({
-      where: { slug: skillSlug },
+    const skill = await this.prisma.skill.findFirst({
+      where: { slug: skillSlug, isActive: true },
     });
 
     if (!skill) {
@@ -35,6 +36,7 @@ export class ChallengesService {
 
     const where: any = {
       skillId: skill.id,
+      isActive: true,
     };
 
     if (filters?.difficulty?.length) {
@@ -132,8 +134,12 @@ export class ChallengesService {
   }
 
   async getChallengeById(id: string) {
-    const challenge = await this.prisma.challenge.findUnique({
-      where: { id },
+    const challenge = await this.prisma.challenge.findFirst({
+      where: {
+        id,
+        isActive: true,
+        skill: { isActive: true },
+      },
       include: {
         skill: true,
       },
@@ -158,7 +164,10 @@ export class ChallengesService {
       search?: string;
     },
   ) {
-    const where: any = {};
+    const where: any = {
+      isActive: true,
+      skill: { isActive: true },
+    };
 
     if (filters?.search) {
       where.title = { contains: filters.search, mode: 'insensitive' };
@@ -178,8 +187,8 @@ export class ChallengesService {
 
 
     const targetSkillSlug = filters?.skillSlug || 'algorithms';
-    const skill = await this.prisma.skill.findUnique({
-      where: { slug: targetSkillSlug },
+    const skill = await this.prisma.skill.findFirst({
+      where: { slug: targetSkillSlug, isActive: true },
     });
     if (skill) {
       where.skillId = skill.id;
@@ -208,6 +217,9 @@ export class ChallengesService {
         take: 1,
       };
     }
+    include.skill = {
+      select: { slug: true },
+    };
 
     const page = filters?.page || 1;
     const limit = filters?.limit || 100;
@@ -241,7 +253,8 @@ export class ChallengesService {
   async getUniqueTopics() {
     const records = await this.prisma.challenge.findMany({
       where: {
-        skill: { slug: 'algorithms' }
+        isActive: true,
+        skill: { slug: 'algorithms', isActive: true }
       },
       select: { topics: true },
     });

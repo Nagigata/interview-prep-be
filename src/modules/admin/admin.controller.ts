@@ -11,8 +11,12 @@ import {
   Req,
   ForbiddenException,
 } from '@nestjs/common';
-import { AdminService } from './admin.service';
 import { AdminGuard } from '../../common/guards/admin.guard';
+import { AdminDashboardService } from './services/admin-dashboard.service';
+import { AdminUsersService } from './services/admin-users.service';
+import { AdminInterviewsService } from './services/admin-interviews.service';
+import { AdminChallengesService } from './services/admin-challenges.service';
+import { AdminSkillsService } from './services/admin-skills.service';
 import {
   CreateChallengeDto,
   UpdateChallengeDto,
@@ -33,18 +37,24 @@ function parsePagination(page?: string, limit?: string) {
 @UseGuards(AdminGuard)
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly dashboardService: AdminDashboardService,
+    private readonly usersService: AdminUsersService,
+    private readonly interviewsService: AdminInterviewsService,
+    private readonly challengesService: AdminChallengesService,
+    private readonly skillsService: AdminSkillsService,
+  ) {}
 
   // ===== DASHBOARD =====
 
   @Get('dashboard')
   async getDashboard() {
-    return this.adminService.getDashboardStats();
+    return this.dashboardService.getDashboardStats();
   }
 
   @Get('stats')
   async getStats() {
-    return this.adminService.getStats();
+    return this.dashboardService.getStats();
   }
 
   // ===== USERS =====
@@ -55,7 +65,7 @@ export class AdminController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
   ) {
-    return this.adminService.getUsers({
+    return this.usersService.getUsers({
       ...parsePagination(page, limit),
       search: search || undefined,
     });
@@ -63,7 +73,7 @@ export class AdminController {
 
   @Get('users/:id')
   async getUserDetail(@Param('id') id: string) {
-    return this.adminService.getUserDetail(id);
+    return this.usersService.getUserDetail(id);
   }
 
   @Patch('users/:id')
@@ -79,7 +89,7 @@ export class AdminController {
     if (req.user?.id === id && body.isActive === false) {
       throw new ForbiddenException('Cannot deactivate your own account.');
     }
-    return this.adminService.updateUser(id, body);
+    return this.usersService.updateUser(id, body);
   }
 
   // ===== INTERVIEWS =====
@@ -90,7 +100,7 @@ export class AdminController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
   ) {
-    return this.adminService.getInterviews({
+    return this.interviewsService.getInterviews({
       ...parsePagination(page, limit),
       search: search || undefined,
     });
@@ -104,7 +114,7 @@ export class AdminController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
   ) {
-    return this.adminService.getChallenges({
+    return this.challengesService.getChallenges({
       ...parsePagination(page, limit),
       search: search || undefined,
     });
@@ -112,33 +122,38 @@ export class AdminController {
 
   @Post('challenges')
   async createChallenge(@Body() body: CreateChallengeDto) {
-    return this.adminService.createChallenge(body);
+    return this.challengesService.createChallenge(body);
   }
 
   @Patch('challenges/:id')
   async updateChallenge(@Param('id') id: string, @Body() body: UpdateChallengeDto) {
-    return this.adminService.updateChallenge(id, body);
+    return this.challengesService.updateChallenge(id, body);
   }
 
   @Delete('challenges/:id')
   async deleteChallenge(@Param('id') id: string) {
-    return this.adminService.deleteChallenge(id);
+    return this.challengesService.deleteChallenge(id);
   }
 
   // ===== SKILLS =====
 
   @Get('skills')
   async getSkills() {
-    return this.adminService.getSkills();
+    return this.skillsService.getSkills();
   }
 
   @Post('skills')
   async createSkill(@Body() body: CreateSkillDto) {
-    return this.adminService.createSkill(body);
+    return this.skillsService.createSkill(body);
   }
 
   @Patch('skills/:id')
   async updateSkill(@Param('id') id: string, @Body() body: UpdateSkillDto) {
-    return this.adminService.updateSkill(id, body);
+    return this.skillsService.updateSkill(id, body);
+  }
+
+  @Delete('skills/:id')
+  async deleteSkill(@Param('id') id: string) {
+    return this.skillsService.deleteSkill(id);
   }
 }

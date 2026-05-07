@@ -44,8 +44,12 @@ export class SubmissionsService {
     code: string,
     language: string,
   ) {
-    const challenge = await this.prisma.challenge.findUnique({
-      where: { id: challengeId },
+    const challenge = await this.prisma.challenge.findFirst({
+      where: {
+        id: challengeId,
+        isActive: true,
+        skill: { isActive: true },
+      },
     });
 
     if (!challenge) {
@@ -80,8 +84,12 @@ export class SubmissionsService {
     code: string,
     language: string,
   ) {
-    const challenge = await this.prisma.challenge.findUnique({
-      where: { id: challengeId },
+    const challenge = await this.prisma.challenge.findFirst({
+      where: {
+        id: challengeId,
+        isActive: true,
+        skill: { isActive: true },
+      },
     });
 
     if (!challenge) {

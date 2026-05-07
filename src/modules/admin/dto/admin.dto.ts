@@ -59,6 +59,10 @@ export class CreateChallengeDto {
 
   @IsOptional()
   followUps?: any;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }
 
 export class UpdateChallengeDto {
@@ -109,6 +113,10 @@ export class UpdateChallengeDto {
 
   @IsOptional()
   followUps?: any;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }
 
 export class CreateSkillDto {
@@ -127,6 +135,10 @@ export class CreateSkillDto {
   @IsString()
   @IsOptional()
   icon?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }
 
 export class UpdateSkillDto {
@@ -136,11 +148,19 @@ export class UpdateSkillDto {
 
   @IsString()
   @IsOptional()
+  slug?: string;
+
+  @IsString()
+  @IsOptional()
   description?: string;
 
   @IsString()
   @IsOptional()
   icon?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }
 
 export class UpdateUserRoleDto {
