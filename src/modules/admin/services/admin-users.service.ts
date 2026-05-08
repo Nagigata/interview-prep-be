@@ -1,9 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
+import {
+  AdminAuditContext,
+  AdminAuditLogService,
+} from './admin-audit-log.service';
 
 @Injectable()
 export class AdminUsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogService: AdminAuditLogService,
+  ) {}
 
   async getUsers(params: {
     page: number;
@@ -97,7 +104,11 @@ export class AdminUsersService {
     });
   }
 
-  async updateUser(userId: string, data: { role?: string; isActive?: boolean }) {
+  async updateUser(
+    userId: string,
+    data: { role?: string; isActive?: boolean },
+    auditContext?: AdminAuditContext,
+  ) {
     const updateData: any = {};
     if (data.role === 'ADMIN' || data.role === 'USER') {
       updateData.role = data.role;
@@ -106,7 +117,12 @@ export class AdminUsersService {
       updateData.isActive = data.isActive;
     }
 
-    return this.prisma.user.update({
+    const before = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, role: true, isActive: true },
+    });
+
+    const updatedUser = await this.prisma.user.update({
       where: { id: userId },
       data: updateData,
       select: {
@@ -117,5 +133,37 @@ export class AdminUsersService {
         isActive: true,
       },
     });
+
+    if (auditContext && before) {
+      if (before.role !== updatedUser.role) {
+        await this.auditLogService.record({
+          ...auditContext,
+          action: 'UPDATE_USER_ROLE',
+          entityType: 'USER',
+          entityId: updatedUser.id,
+          entityName: updatedUser.email,
+          metadata: {
+            before: { role: before.role },
+            after: { role: updatedUser.role },
+          },
+        });
+      }
+
+      if (before.isActive !== updatedUser.isActive) {
+        await this.auditLogService.record({
+          ...auditContext,
+          action: 'UPDATE_USER_STATUS',
+          entityType: 'USER',
+          entityId: updatedUser.id,
+          entityName: updatedUser.email,
+          metadata: {
+            before: { isActive: before.isActive },
+            after: { isActive: updatedUser.isActive },
+          },
+        });
+      }
+    }
+
+    return updatedUser;
   }
 }

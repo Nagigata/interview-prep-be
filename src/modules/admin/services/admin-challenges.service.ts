@@ -1,6 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Difficulty, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
+import {
+  AdminAuditContext,
+  AdminAuditLogService,
+} from './admin-audit-log.service';
 
 type ChallengeWriteData = {
   skillId?: string;
@@ -10,7 +14,10 @@ type ChallengeWriteData = {
 
 @Injectable()
 export class AdminChallengesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogService: AdminAuditLogService,
+  ) {}
 
   private async ensureChallengeTitleAndSlugAreUnique(
     data: ChallengeWriteData,
@@ -169,21 +176,24 @@ export class AdminChallengesService {
     };
   }
 
-  async createChallenge(data: {
-    skillId: string;
-    title: string;
-    slug: string;
-    description: string;
-    difficulty: string;
-    topics?: string;
-    templateCode: any;
-    testCases: any;
-    examples?: any;
-    constraints?: any;
-    hints?: any;
-    solution?: string;
-    followUps?: any;
-  }) {
+  async createChallenge(
+    data: {
+      skillId: string;
+      title: string;
+      slug: string;
+      description: string;
+      difficulty: string;
+      topics?: string;
+      templateCode: any;
+      testCases: any;
+      examples?: any;
+      constraints?: any;
+      hints?: any;
+      solution?: string;
+      followUps?: any;
+    },
+    auditContext?: AdminAuditContext,
+  ) {
     const title = data.title.trim();
     const slug = data.slug.trim();
 
@@ -193,7 +203,7 @@ export class AdminChallengesService {
       slug,
     });
 
-    return this.prisma.challenge.create({
+    const challenge = await this.prisma.challenge.create({
       data: {
         skillId: data.skillId,
         title,
@@ -210,6 +220,28 @@ export class AdminChallengesService {
         followUps: data.followUps,
       },
     });
+
+    if (auditContext) {
+      await this.auditLogService.record({
+        ...auditContext,
+        action: 'CREATE_CHALLENGE',
+        entityType: 'CHALLENGE',
+        entityId: challenge.id,
+        entityName: challenge.title,
+        metadata: {
+          after: {
+            title: challenge.title,
+            slug: challenge.slug,
+            difficulty: challenge.difficulty,
+            topics: challenge.topics,
+            skillId: challenge.skillId,
+            isActive: challenge.isActive,
+          },
+        },
+      });
+    }
+
+    return challenge;
   }
 
   async updateChallenge(
@@ -230,6 +262,7 @@ export class AdminChallengesService {
       followUps?: any;
       isActive?: boolean;
     },
+    auditContext?: AdminAuditContext,
   ) {
     await this.ensureChallengeTitleAndSlugAreUnique(
       {
@@ -239,6 +272,23 @@ export class AdminChallengesService {
       },
       challengeId,
     );
+
+    const before = await this.prisma.challenge.findUnique({
+      where: { id: challengeId },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        skillId: true,
+        difficulty: true,
+        topics: true,
+        isActive: true,
+      },
+    });
+
+    if (!before) {
+      throw new BadRequestException('Challenge not found.');
+    }
 
     const updateData: any = {};
     if (data.skillId !== undefined) updateData.skillId = data.skillId;
@@ -256,16 +306,97 @@ export class AdminChallengesService {
     if (data.followUps !== undefined) updateData.followUps = data.followUps;
     if (typeof data.isActive === 'boolean') updateData.isActive = data.isActive;
 
-    return this.prisma.challenge.update({
+    const challenge = await this.prisma.challenge.update({
       where: { id: challengeId },
       data: updateData,
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        skillId: true,
+        description: true,
+        difficulty: true,
+        topics: true,
+        isActive: true,
+        examples: true,
+        constraints: true,
+        hints: true,
+        solution: true,
+        followUps: true,
+        templateCode: true,
+        testCases: true,
+        createdAt: true,
+      },
     });
+
+    if (auditContext) {
+      const isStatusChange = before.isActive !== challenge.isActive;
+      await this.auditLogService.record({
+        ...auditContext,
+        action: isStatusChange
+          ? challenge.isActive
+            ? 'ENABLE_CHALLENGE'
+            : 'DISABLE_CHALLENGE'
+          : 'UPDATE_CHALLENGE',
+        entityType: 'CHALLENGE',
+        entityId: challenge.id,
+        entityName: challenge.title,
+        metadata: {
+          before: {
+            title: before.title,
+            slug: before.slug,
+            skillId: before.skillId,
+            difficulty: before.difficulty,
+            topics: before.topics,
+            isActive: before.isActive,
+          },
+          after: {
+            title: challenge.title,
+            slug: challenge.slug,
+            skillId: challenge.skillId,
+            difficulty: challenge.difficulty,
+            topics: challenge.topics,
+            isActive: challenge.isActive,
+          },
+        },
+      });
+    }
+
+    return challenge;
   }
 
-  async deleteChallenge(challengeId: string) {
-    return this.prisma.challenge.update({
+  async deleteChallenge(
+    challengeId: string,
+    auditContext?: AdminAuditContext,
+  ) {
+    const before = await this.prisma.challenge.findUnique({
+      where: { id: challengeId },
+      select: { id: true, title: true, isActive: true },
+    });
+
+    if (!before) {
+      throw new BadRequestException('Challenge not found.');
+    }
+
+    const challenge = await this.prisma.challenge.update({
       where: { id: challengeId },
       data: { isActive: false },
     });
+
+    if (auditContext && before.isActive !== challenge.isActive) {
+      await this.auditLogService.record({
+        ...auditContext,
+        action: 'DISABLE_CHALLENGE',
+        entityType: 'CHALLENGE',
+        entityId: challenge.id,
+        entityName: challenge.title,
+        metadata: {
+          before: { isActive: before.isActive },
+          after: { isActive: challenge.isActive },
+        },
+      });
+    }
+
+    return challenge;
   }
 }

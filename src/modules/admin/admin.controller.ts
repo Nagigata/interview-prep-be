@@ -17,6 +17,7 @@ import { AdminUsersService } from './services/admin-users.service';
 import { AdminInterviewsService } from './services/admin-interviews.service';
 import { AdminChallengesService } from './services/admin-challenges.service';
 import { AdminSkillsService } from './services/admin-skills.service';
+import { AdminAuditLogService } from './services/admin-audit-log.service';
 import {
   CreateChallengeDto,
   UpdateChallengeDto,
@@ -34,6 +35,14 @@ function parsePagination(page?: string, limit?: string) {
   };
 }
 
+function getAuditContext(req: any) {
+  return {
+    adminId: req.user.id,
+    ipAddress: req.ip || req.headers?.['x-forwarded-for'],
+    userAgent: req.headers?.['user-agent'],
+  };
+}
+
 @UseGuards(AdminGuard)
 @Controller('admin')
 export class AdminController {
@@ -43,18 +52,35 @@ export class AdminController {
     private readonly interviewsService: AdminInterviewsService,
     private readonly challengesService: AdminChallengesService,
     private readonly skillsService: AdminSkillsService,
+    private readonly auditLogService: AdminAuditLogService,
   ) {}
 
   // ===== DASHBOARD =====
 
   @Get('dashboard')
-  async getDashboard() {
-    return this.dashboardService.getDashboardStats();
+  async getDashboard(@Query('range') range?: string) {
+    return this.dashboardService.getDashboardStats(range);
   }
 
   @Get('stats')
   async getStats(@Query('range') range?: string) {
     return this.dashboardService.getStats(range);
+  }
+
+  @Get('audit-logs')
+  async getAuditLogs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('action') action?: string,
+    @Query('entityType') entityType?: string,
+  ) {
+    return this.auditLogService.getLogs({
+      ...parsePagination(page, limit),
+      search: search || undefined,
+      action: action || undefined,
+      entityType: entityType || undefined,
+    });
   }
 
   // ===== USERS =====
@@ -93,7 +119,7 @@ export class AdminController {
     if (req.user?.id === id && body.isActive === false) {
       throw new ForbiddenException('Cannot deactivate your own account.');
     }
-    return this.usersService.updateUser(id, body);
+    return this.usersService.updateUser(id, body, getAuditContext(req));
   }
 
   // ===== INTERVIEWS =====
@@ -130,13 +156,21 @@ export class AdminController {
   }
 
   @Patch('interviews/:id/archive')
-  async archiveInterview(@Param('id') id: string) {
-    return this.interviewsService.setInterviewArchived(id, true);
+  async archiveInterview(@Param('id') id: string, @Req() req: any) {
+    return this.interviewsService.setInterviewArchived(
+      id,
+      true,
+      getAuditContext(req),
+    );
   }
 
   @Patch('interviews/:id/restore')
-  async restoreInterview(@Param('id') id: string) {
-    return this.interviewsService.setInterviewArchived(id, false);
+  async restoreInterview(@Param('id') id: string, @Req() req: any) {
+    return this.interviewsService.setInterviewArchived(
+      id,
+      false,
+      getAuditContext(req),
+    );
   }
 
   // ===== CHALLENGES =====
@@ -160,18 +194,26 @@ export class AdminController {
   }
 
   @Post('challenges')
-  async createChallenge(@Body() body: CreateChallengeDto) {
-    return this.challengesService.createChallenge(body);
+  async createChallenge(@Body() body: CreateChallengeDto, @Req() req: any) {
+    return this.challengesService.createChallenge(body, getAuditContext(req));
   }
 
   @Patch('challenges/:id')
-  async updateChallenge(@Param('id') id: string, @Body() body: UpdateChallengeDto) {
-    return this.challengesService.updateChallenge(id, body);
+  async updateChallenge(
+    @Param('id') id: string,
+    @Body() body: UpdateChallengeDto,
+    @Req() req: any,
+  ) {
+    return this.challengesService.updateChallenge(
+      id,
+      body,
+      getAuditContext(req),
+    );
   }
 
   @Delete('challenges/:id')
-  async deleteChallenge(@Param('id') id: string) {
-    return this.challengesService.deleteChallenge(id);
+  async deleteChallenge(@Param('id') id: string, @Req() req: any) {
+    return this.challengesService.deleteChallenge(id, getAuditContext(req));
   }
 
   // ===== SKILLS =====
@@ -182,17 +224,21 @@ export class AdminController {
   }
 
   @Post('skills')
-  async createSkill(@Body() body: CreateSkillDto) {
-    return this.skillsService.createSkill(body);
+  async createSkill(@Body() body: CreateSkillDto, @Req() req: any) {
+    return this.skillsService.createSkill(body, getAuditContext(req));
   }
 
   @Patch('skills/:id')
-  async updateSkill(@Param('id') id: string, @Body() body: UpdateSkillDto) {
-    return this.skillsService.updateSkill(id, body);
+  async updateSkill(
+    @Param('id') id: string,
+    @Body() body: UpdateSkillDto,
+    @Req() req: any,
+  ) {
+    return this.skillsService.updateSkill(id, body, getAuditContext(req));
   }
 
   @Delete('skills/:id')
-  async deleteSkill(@Param('id') id: string) {
-    return this.skillsService.deleteSkill(id);
+  async deleteSkill(@Param('id') id: string, @Req() req: any) {
+    return this.skillsService.deleteSkill(id, getAuditContext(req));
   }
 }

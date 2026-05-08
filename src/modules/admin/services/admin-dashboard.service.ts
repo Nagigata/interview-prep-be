@@ -75,9 +75,10 @@ export class AdminDashboardService {
     return Math.round(((current - previous) / previous) * 100);
   }
 
-  async getDashboardStats() {
+  async getDashboardStats(range = '6m') {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
+    const { startDate: contentStartDate } = this.getTimeBuckets(range);
 
     const [
       totalUsers,
@@ -97,6 +98,7 @@ export class AdminDashboardService {
       recentUsers,
       recentSubmissions,
       recentInterviews,
+      recentAuditLogs,
       topSkills,
       topChallengeGroups,
     ] = await Promise.all([
@@ -131,6 +133,7 @@ export class AdminDashboardService {
           email: true,
           role: true,
           isActive: true,
+          avatarUrl: true,
           createdAt: true,
         },
       }),
@@ -161,13 +164,33 @@ export class AdminDashboardService {
           _count: { select: { attempts: true } },
         },
       }),
+      this.prisma.adminAuditLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          action: true,
+          entityType: true,
+          entityId: true,
+          entityName: true,
+          createdAt: true,
+          admin: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      }),
       this.prisma.$queryRaw<
         {
           id: string;
           name: string;
           slug: string;
           isActive: boolean;
-          challengeCount: bigint;
+          submissionCount: bigint;
         }[]
       >`
         SELECT
@@ -175,11 +198,14 @@ export class AdminDashboardService {
           skills.name,
           skills.slug,
           skills.is_active as "isActive",
-          COUNT(challenges.id)::bigint as "challengeCount"
+          COUNT(challenge_submissions.id)::bigint as "submissionCount"
         FROM skills
-        LEFT JOIN challenges ON challenges.skill_id = skills.id
+        INNER JOIN challenges ON challenges.skill_id = skills.id
+        INNER JOIN challenge_submissions
+          ON challenge_submissions.challenge_id = challenges.id
+          AND challenge_submissions.created_at >= ${contentStartDate}
         GROUP BY skills.id
-        ORDER BY "challengeCount" DESC, skills.created_at DESC
+        ORDER BY "submissionCount" DESC, skills.created_at DESC
         LIMIT 5
       `,
       this.prisma.$queryRaw<
@@ -192,6 +218,7 @@ export class AdminDashboardService {
           challenge_id as "challengeId",
           COUNT(*)::bigint as "submissionCount"
         FROM challenge_submissions
+        WHERE created_at >= ${contentStartDate}
         GROUP BY challenge_id
         ORDER BY "submissionCount" DESC
         LIMIT 5
@@ -251,12 +278,13 @@ export class AdminDashboardService {
         userEmail: interview.user.email,
         attempts: interview._count.attempts,
       })),
+      recentAuditLogs,
       topSkills: topSkills.map((skill) => ({
         id: skill.id,
         name: skill.name,
         slug: skill.slug,
         isActive: skill.isActive,
-        challengeCount: Number(skill.challengeCount),
+        submissionCount: Number(skill.submissionCount),
       })),
       topChallenges: topChallengeGroups
         .map((group) => {

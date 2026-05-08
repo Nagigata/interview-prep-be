@@ -1,9 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../shared/prisma/prisma.service';
+import {
+  AdminAuditContext,
+  AdminAuditLogService,
+} from './admin-audit-log.service';
 
 @Injectable()
 export class AdminInterviewsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogService: AdminAuditLogService,
+  ) {}
 
   async getInterviews(params: {
     page: number;
@@ -196,17 +203,21 @@ export class AdminInterviewsService {
     return attempt;
   }
 
-  async setInterviewArchived(interviewId: string, shouldArchive: boolean) {
+  async setInterviewArchived(
+    interviewId: string,
+    shouldArchive: boolean,
+    auditContext?: AdminAuditContext,
+  ) {
     const interview = await this.prisma.interview.findUnique({
       where: { id: interviewId },
-      select: { id: true },
+      select: { id: true, role: true, archivedAt: true },
     });
 
     if (!interview) {
       throw new NotFoundException('Interview not found.');
     }
 
-    return this.prisma.interview.update({
+    const updatedInterview = await this.prisma.interview.update({
       where: { id: interviewId },
       data: {
         archivedAt: shouldArchive ? new Date() : null,
@@ -217,5 +228,28 @@ export class AdminInterviewsService {
         archivedAt: true,
       },
     });
+
+    if (
+      auditContext &&
+      Boolean(interview.archivedAt) !== Boolean(updatedInterview.archivedAt)
+    ) {
+      await this.auditLogService.record({
+        ...auditContext,
+        action: shouldArchive ? 'ARCHIVE_INTERVIEW' : 'RESTORE_INTERVIEW',
+        entityType: 'INTERVIEW',
+        entityId: updatedInterview.id,
+        entityName: updatedInterview.role,
+        metadata: {
+          before: {
+            archivedAt: interview.archivedAt?.toISOString() ?? null,
+          },
+          after: {
+            archivedAt: updatedInterview.archivedAt?.toISOString() ?? null,
+          },
+        },
+      });
+    }
+
+    return updatedInterview;
   }
 }
