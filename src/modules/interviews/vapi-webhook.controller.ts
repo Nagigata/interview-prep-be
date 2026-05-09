@@ -36,6 +36,7 @@ export class VapiWebhookController {
     const callVars = body?.message?.call?.variableValues || {};
     const userid = args.userid || callVars.userid;
     const language = args.language || callVars.language || 'en';
+    const provider = args.aiProvider || args.provider || callVars.aiProvider;
     const toolCallId = body?.message?.toolCallList?.[0]?.id ?? 'unknown';
 
     this.logger.log(`Generating interview for user: ${userid}, role: ${role}`);
@@ -49,6 +50,7 @@ export class VapiWebhookController {
         techstack,
         amount,
         language,
+        provider,
       });
 
 
