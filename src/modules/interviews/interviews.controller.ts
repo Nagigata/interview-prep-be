@@ -11,10 +11,14 @@ import {
 import { InterviewsService } from './interviews.service';
 import { CreateInterviewDto } from './dto/create-interview.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { InterviewGenerationJobsService } from './interview-generation-jobs.service';
 
 @Controller('interviews')
 export class InterviewsController {
-  constructor(private readonly interviewsService: InterviewsService) {}
+  constructor(
+    private readonly interviewsService: InterviewsService,
+    private readonly generationJobsService: InterviewGenerationJobsService,
+  ) {}
 
   @Post()
   async create(
@@ -43,6 +47,19 @@ export class InterviewsController {
   @Get('attempted')
   async findAttempted(@CurrentUser() user: { id: string }) {
     return this.interviewsService.findAttemptedByUserId(user.id);
+  }
+
+  @Get('generation-jobs/active')
+  async findActiveGenerationJob(@CurrentUser() user: { id: string }) {
+    return this.generationJobsService.getLatestForUser(user.id);
+  }
+
+  @Get('generation-jobs/:jobId')
+  async findGenerationJob(
+    @CurrentUser() user: { id: string },
+    @Param('jobId') jobId: string,
+  ) {
+    return this.generationJobsService.getByIdForUser(jobId, user.id);
   }
 
   @Get(':id/attempts')
