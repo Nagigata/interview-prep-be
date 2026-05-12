@@ -7,6 +7,8 @@ import {
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { AiService } from '../../shared/ai/ai.service';
 import { StartInterviewGenerationDto } from './dto/start-interview-generation.dto';
+import { InterviewGenerationGateway } from './interview-generation.gateway';
+import { InterviewGenerationJob } from '@prisma/client';
 
 type JobStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
@@ -17,6 +19,7 @@ export class InterviewGenerationJobsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
+    private readonly generationGateway: InterviewGenerationGateway,
   ) {}
 
   async startJob(userId: string, dto: StartInterviewGenerationDto) {
@@ -40,6 +43,7 @@ export class InterviewGenerationJobsService {
     });
 
     void this.processJob(job.id);
+    this.emitJobUpdate(job);
     return this.toResponse(job);
   }
 
@@ -72,10 +76,11 @@ export class InterviewGenerationJobsService {
     const job = await this.jobs.findUnique({ where: { id: jobId } });
     if (!job) return;
 
-    await this.jobs.update({
+    const processingJob = await this.jobs.update({
       where: { id: jobId },
       data: { status: 'PROCESSING' satisfies JobStatus },
     });
+    this.emitJobUpdate(processingJob);
 
     try {
       const questions = await this.aiService.generateInterviewQuestions({
@@ -101,7 +106,7 @@ export class InterviewGenerationJobsService {
         },
       });
 
-      await this.jobs.update({
+      const completedJob = await this.jobs.update({
         where: { id: jobId },
         data: {
           status: 'COMPLETED' satisfies JobStatus,
@@ -109,12 +114,13 @@ export class InterviewGenerationJobsService {
           completedAt: new Date(),
         },
       });
+      this.emitJobUpdate(completedJob);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Failed to generate interview';
 
       this.logger.error(`Generation job ${jobId} failed`, error);
-      await this.jobs.update({
+      const failedJob = await this.jobs.update({
         where: { id: jobId },
         data: {
           status: 'FAILED' satisfies JobStatus,
@@ -122,6 +128,7 @@ export class InterviewGenerationJobsService {
           completedAt: new Date(),
         },
       });
+      this.emitJobUpdate(failedJob);
     }
   }
 
@@ -132,7 +139,7 @@ export class InterviewGenerationJobsService {
       .filter(Boolean);
   }
 
-  private toResponse(job: any) {
+  private toResponse(job: InterviewGenerationJob) {
     return {
       id: job.id,
       status: job.status,
@@ -149,6 +156,13 @@ export class InterviewGenerationJobsService {
       updatedAt: job.updatedAt,
       completedAt: job.completedAt,
     };
+  }
+
+  private emitJobUpdate(job: InterviewGenerationJob) {
+    this.generationGateway.emitGenerationJobUpdated(
+      job.userId,
+      this.toResponse(job),
+    );
   }
 
   private get jobs() {
