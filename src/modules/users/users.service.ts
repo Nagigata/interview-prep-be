@@ -29,6 +29,8 @@ export class UsersService {
       acceptedSubmissions,
       recentActivity,
       yearlySubmissions,
+      yearlyInterviewAttempts,
+      recentInterviewAttempts,
     ] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id },
@@ -107,9 +109,58 @@ export class UsersService {
           createdAt: true,
         },
       }),
+      (this.prisma.interviewAttempt.findMany as any)({
+        where: {
+          userId: id,
+          status: 'COMPLETED',
+          completedAt: {
+            gte: oneYearAgo,
+            not: null,
+          },
+          feedback: {
+            isNot: null,
+          },
+        },
+        orderBy: { completedAt: 'asc' },
+        select: {
+          completedAt: true,
+        },
+      }),
+      (this.prisma.interviewAttempt.findMany as any)({
+        where: {
+          userId: id,
+          status: 'COMPLETED',
+          completedAt: {
+            not: null,
+          },
+          feedback: {
+            isNot: null,
+          },
+        },
+        orderBy: { completedAt: 'desc' },
+        take: 10,
+        include: {
+          interview: {
+            select: {
+              id: true,
+              role: true,
+              level: true,
+              type: true,
+            },
+          },
+          feedback: {
+            select: {
+              totalScore: true,
+            },
+          },
+        },
+      }),
     ]);
 
-    const solvedByChallenge = new Map<string, (typeof acceptedSubmissions)[number]>();
+    const solvedByChallenge = new Map<
+      string,
+      (typeof acceptedSubmissions)[number]
+    >();
     acceptedSubmissions.forEach((submission) => {
       if (!solvedByChallenge.has(submission.challengeId)) {
         solvedByChallenge.set(submission.challengeId, submission);
@@ -155,6 +206,17 @@ export class UsersService {
       );
       activityMap.set(dateKey, (activityMap.get(dateKey) || 0) + 1);
     });
+    yearlyInterviewAttempts.forEach((attempt: any) => {
+      if (!attempt.completedAt) {
+        return;
+      }
+
+      const dateKey = this.getDateKeyInTimezone(
+        attempt.completedAt,
+        userTimezone,
+      );
+      activityMap.set(dateKey, (activityMap.get(dateKey) || 0) + 1);
+    });
 
     const activityCalendar = this.buildActivityCalendar(
       oneYearAgo,
@@ -193,16 +255,15 @@ export class UsersService {
         },
       },
       activityCalendar,
-      recentActivity: recentActivity.map((submission) => ({
-        id: submission.id,
-        challengeId: submission.challengeId,
-        challengeTitle: submission.challenge.title,
-        difficulty: submission.challenge.difficulty,
-        skillSlug: submission.challenge.skill.slug,
-        language: submission.language,
-        status: submission.status,
-        submittedAt: submission.createdAt,
-      })),
+      recentActivity: this.mergeRecentActivity(
+        recentActivity.map((submission) =>
+          this.mapSubmissionActivity(submission),
+        ),
+        recentInterviewAttempts.map((attempt: any) =>
+          this.mapInterviewAttemptActivity(attempt),
+        ),
+        10,
+      ),
     };
   }
 
@@ -212,11 +273,7 @@ export class UsersService {
     });
   }
 
-  async updateProfile(
-    userId: string,
-    data: { name?: string },
-    avatar?: any,
-  ) {
+  async updateProfile(userId: string, data: { name?: string }, avatar?: any) {
     const updateData: { name?: string; avatarUrl?: string } = {};
 
     if (data.name?.trim()) {
@@ -352,6 +409,63 @@ export class UsersService {
     };
   }
 
+  async getStarredInterviews(userId: string, params: PaginationParams) {
+    const page = Math.max(params.page || 1, 1);
+    const limit = Math.min(Math.max(params.limit || 10, 1), 50);
+    const skip = (page - 1) * limit;
+    const interviewStar = (this.prisma as any).interviewStar;
+
+    const [items, total] = await Promise.all([
+      interviewStar.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          interview: {
+            include: {
+              _count: {
+                select: {
+                  attempts: true,
+                },
+              },
+              feedbacks: {
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
+            },
+          },
+        },
+      }),
+      interviewStar.count({ where: { userId } }),
+    ]);
+
+    const mappedItems = items.map((item: any) => ({
+      id: item.interview.id,
+      role: item.interview.role,
+      level: item.interview.level,
+      questions: item.interview.questions,
+      techstack: item.interview.techstack,
+      createdAt: item.interview.createdAt,
+      userId: item.interview.userId,
+      type: item.interview.type,
+      language: item.interview.language,
+      finalized: item.interview.finalized,
+      isStarred: true,
+      starredAt: item.createdAt,
+      attemptCount: item.interview._count?.attempts || 0,
+      feedback: item.interview.feedbacks?.[0] || null,
+    }));
+
+    return {
+      items: mappedItems,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
+  }
+
   async getSolvedChallenges(userId: string, params: PaginationParams) {
     const page = Math.max(params.page || 1, 1);
     const limit = Math.min(Math.max(params.limit || 10, 1), 50);
@@ -381,7 +495,10 @@ export class UsersService {
       },
     });
 
-    const uniqueSolved = new Map<string, (typeof acceptedSubmissions)[number]>();
+    const uniqueSolved = new Map<
+      string,
+      (typeof acceptedSubmissions)[number]
+    >();
     acceptedSubmissions.forEach((submission) => {
       if (!uniqueSolved.has(submission.challengeId)) {
         uniqueSolved.set(submission.challengeId, submission);
@@ -417,46 +534,78 @@ export class UsersService {
     const page = Math.max(params.page || 1, 1);
     const limit = Math.min(Math.max(params.limit || 20, 1), 50);
     const skip = (page - 1) * limit;
+    const takeForMerge = skip + limit;
+    const completedInterviewWhere = {
+      userId,
+      status: 'COMPLETED',
+      completedAt: {
+        not: null,
+      },
+      feedback: {
+        isNot: null,
+      },
+    };
 
-    const [items, total] = await Promise.all([
-      this.prisma.challengeSubmission.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-        include: {
-          challenge: {
-            select: {
-              id: true,
-              title: true,
-              difficulty: true,
-              skill: {
-                select: {
-                  slug: true,
+    const [submissions, submissionTotal, interviewAttempts, interviewTotal] =
+      await Promise.all([
+        this.prisma.challengeSubmission.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          take: takeForMerge,
+          include: {
+            challenge: {
+              select: {
+                id: true,
+                title: true,
+                difficulty: true,
+                skill: {
+                  select: {
+                    slug: true,
+                  },
                 },
               },
             },
           },
-        },
-      }),
-      this.prisma.challengeSubmission.count({
-        where: { userId },
-      }),
-    ]);
+        }),
+        this.prisma.challengeSubmission.count({
+          where: { userId },
+        }),
+        (this.prisma.interviewAttempt.findMany as any)({
+          where: completedInterviewWhere,
+          orderBy: { completedAt: 'desc' },
+          take: takeForMerge,
+          include: {
+            interview: {
+              select: {
+                id: true,
+                role: true,
+                level: true,
+                type: true,
+              },
+            },
+            feedback: {
+              select: {
+                totalScore: true,
+              },
+            },
+          },
+        }),
+        (this.prisma.interviewAttempt.count as any)({
+          where: completedInterviewWhere,
+        }),
+      ]);
+    const total = submissionTotal + interviewTotal;
+
+    const items = this.mergeRecentActivity(
+      submissions.map((submission) => this.mapSubmissionActivity(submission)),
+      interviewAttempts.map((attempt: any) =>
+        this.mapInterviewAttemptActivity(attempt),
+      ),
+      takeForMerge,
+    ).slice(skip, skip + limit);
 
     return {
-      items: items.map((submission) => ({
-        id: submission.id,
-        challengeId: submission.challengeId,
-        challengeTitle: submission.challenge.title,
-        difficulty: submission.challenge.difficulty,
-        skillSlug: submission.challenge.skill.slug,
-        language: submission.language,
-        status: submission.status,
-        runtime: submission.runtime,
-        memory: submission.memory,
-        submittedAt: submission.createdAt,
-      })),
+      items,
       page,
       limit,
       total,
@@ -508,7 +657,8 @@ export class UsersService {
     });
 
     const rankedSkills = [...skills].sort((a, b) => {
-      const scoreDiff = (scoreMap.get(b.slug) || 0) - (scoreMap.get(a.slug) || 0);
+      const scoreDiff =
+        (scoreMap.get(b.slug) || 0) - (scoreMap.get(a.slug) || 0);
 
       if (scoreDiff !== 0) {
         return scoreDiff;
@@ -522,6 +672,49 @@ export class UsersService {
 
   private getAvatarPublicUrl(filename: string) {
     return `/uploads/avatars/${filename}`;
+  }
+
+  private mapSubmissionActivity(submission: any) {
+    return {
+      id: submission.id,
+      activityType: 'CHALLENGE_SUBMISSION',
+      challengeId: submission.challengeId,
+      challengeTitle: submission.challenge.title,
+      difficulty: submission.challenge.difficulty,
+      skillSlug: submission.challenge.skill.slug,
+      language: submission.language,
+      status: submission.status,
+      runtime: submission.runtime,
+      memory: submission.memory,
+      submittedAt: submission.createdAt,
+    };
+  }
+
+  private mapInterviewAttemptActivity(attempt: any) {
+    return {
+      id: attempt.id,
+      activityType: 'INTERVIEW_ATTEMPT',
+      interviewId: attempt.interviewId,
+      interviewRole: attempt.interview.role,
+      interviewLevel: attempt.interview.level,
+      interviewType: attempt.interview.type,
+      status: 'COMPLETED',
+      score: attempt.feedback?.totalScore ?? null,
+      submittedAt: attempt.completedAt,
+    };
+  }
+
+  private mergeRecentActivity(
+    submissions: any[],
+    interviews: any[],
+    limit: number,
+  ) {
+    return [...submissions, ...interviews]
+      .sort(
+        (a, b) =>
+          new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime(),
+      )
+      .slice(0, limit);
   }
 
   private buildActivityCalendar(

@@ -32,14 +32,17 @@ export class InterviewsService {
   }
 
   async findByUserId(userId: string) {
-    return this.prisma.interview.findMany({
+    const interviews = await (this.prisma.interview.findMany as any)({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      include: this.getStarInclude(userId),
     });
+
+    return interviews.map((interview: any) => this.withStarred(interview));
   }
 
   async findLatest(userId: string, limit = 20) {
-    return this.prisma.interview.findMany({
+    const interviews = await (this.prisma.interview.findMany as any)({
       where: {
         finalized: true,
         archivedAt: null,
@@ -47,7 +50,10 @@ export class InterviewsService {
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
+      include: this.getStarInclude(userId),
     });
+
+    return interviews.map((interview: any) => this.withStarred(interview));
   }
 
   async update(id: string, data: Partial<CreateInterviewDto>) {
@@ -173,13 +179,6 @@ export class InterviewsService {
 
     await this.prisma.transcript.createMany({ data });
 
-    await this.prisma.interviewAttempt.update({
-      where: { id: attemptId },
-      data: {
-        completedAt: new Date(),
-      },
-    });
-
     return { count: data.length };
   }
 
@@ -193,14 +192,47 @@ export class InterviewsService {
     const interviewIds = attempts.map((a) => a.interviewId);
     if (interviewIds.length === 0) return [];
 
-    return this.prisma.interview.findMany({
+    const interviews = await (this.prisma.interview.findMany as any)({
       where: {
         id: { in: interviewIds },
         archivedAt: null,
         userId: { not: userId },
       },
       orderBy: { createdAt: 'desc' },
+      include: this.getStarInclude(userId),
     });
+
+    return interviews.map((interview: any) => this.withStarred(interview));
+  }
+
+  async toggleInterviewStar(userId: string, interviewId: string) {
+    await this.findById(interviewId);
+
+    const interviewStar = (this.prisma as any).interviewStar;
+
+    const existingStar = await interviewStar.findUnique({
+      where: {
+        userId_interviewId: {
+          userId,
+          interviewId,
+        },
+      },
+    });
+
+    if (existingStar) {
+      await interviewStar.delete({
+        where: { id: existingStar.id },
+      });
+      return { starred: false };
+    }
+
+    await interviewStar.create({
+      data: {
+        userId,
+        interviewId,
+      },
+    });
+    return { starred: true };
   }
 
   async deleteInterview(interviewId: string, userId: string) {
@@ -249,5 +281,23 @@ export class InterviewsService {
       // 6. Delete interview
       return tx.interview.delete({ where: { id: interviewId } });
     });
+  }
+
+  private getStarInclude(userId: string) {
+    return {
+      stars: {
+        where: { userId },
+        take: 1,
+      },
+    };
+  }
+
+  private withStarred(interview: any) {
+    const { stars, ...rest } = interview;
+
+    return {
+      ...rest,
+      isStarred: stars?.length > 0,
+    };
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { AiService } from '../../shared/ai/ai.service';
 import { InterviewsService } from '../interviews/interviews.service';
@@ -7,6 +7,8 @@ import { CreateFeedbackDto } from './dto/create-feedback.dto';
 @Injectable()
 export class FeedbacksService {
   private readonly logger = new Logger(FeedbacksService.name);
+  private readonly minUserAnswerTurns = 2;
+  private readonly minUserAnswerChars = 50;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -22,17 +24,45 @@ export class FeedbacksService {
     const { interview } = attempt;
     const interviewId = interview.id;
 
+    // Save transcripts
+    await this.interviewsService.saveTranscripts(attemptId, transcript);
+
+    const validation = this.validateMeaningfulTranscript(transcript);
+    if (!validation.valid) {
+      await this.updateAttemptStatus(attemptId, {
+        status: 'TOO_SHORT',
+        endedAt: new Date(),
+        failureReason: validation.reason,
+      });
+
+      throw new BadRequestException(validation.reason);
+    }
+
     // Check if feedback already exists for this attempt
     const existing = await this.prisma.feedback.findUnique({
       where: { attemptId },
     });
 
-    // Save transcripts
-    await this.interviewsService.saveTranscripts(attemptId, transcript);
-
     // Generate feedback using AI
     this.logger.log(`Generating AI feedback for attempt: ${attemptId}`);
-    const aiResult = await this.aiService.generateFeedback(transcript, interview.language);
+    let aiResult: Awaited<ReturnType<AiService['generateFeedback']>>;
+
+    try {
+      aiResult = await this.aiService.generateFeedback(
+        transcript,
+        interview.language,
+      );
+    } catch (error) {
+      await this.updateAttemptStatus(attemptId, {
+        status: 'FAILED',
+        endedAt: new Date(),
+        failureReason:
+          error instanceof Error
+            ? error.message
+            : 'Failed to generate interview feedback.',
+      });
+      throw error;
+    }
 
     const feedbackData = {
       attemptId,
@@ -76,6 +106,14 @@ export class FeedbacksService {
       });
     }
 
+    const finishedAt = new Date();
+    await this.updateAttemptStatus(attemptId, {
+      status: 'COMPLETED',
+      endedAt: finishedAt,
+      completedAt: finishedAt,
+      failureReason: null,
+    });
+
     // Return feedback with category scores
     return this.prisma.feedback.findUnique({
       where: { id: feedback.id },
@@ -103,6 +141,43 @@ export class FeedbacksService {
         userId,
       },
       include: { categoryScores: true },
+    });
+  }
+
+  private validateMeaningfulTranscript(
+    transcript: CreateFeedbackDto['transcript'],
+  ) {
+    const userAnswers = transcript
+      .filter((item) => item.role.toLowerCase() === 'user')
+      .map((item) => item.content.trim())
+      .filter(Boolean);
+
+    const totalUserAnswerChars = userAnswers.reduce(
+      (total, answer) => total + answer.length,
+      0,
+    );
+
+    if (
+      userAnswers.length < this.minUserAnswerTurns ||
+      totalUserAnswerChars < this.minUserAnswerChars
+    ) {
+      return {
+        valid: false,
+        reason:
+          'Interview is too short to generate feedback. Please provide at least 2 answers and 50 total characters before ending.',
+      };
+    }
+
+    return { valid: true };
+  }
+
+  private async updateAttemptStatus(
+    attemptId: string,
+    data: Record<string, unknown>,
+  ) {
+    await (this.prisma.interviewAttempt.update as any)({
+      where: { id: attemptId },
+      data,
     });
   }
 }

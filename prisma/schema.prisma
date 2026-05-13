@@ -34,6 +34,7 @@ model User {
   feedbacks            Feedback[]
   challengeSubmissions ChallengeSubmission[]
   challengeStars       ChallengeStar[]
+  interviewStars       InterviewStar[]
   adminAuditLogs       AdminAuditLog[]
   interviewGenerationJobs InterviewGenerationJob[]
 
@@ -79,6 +80,7 @@ model Interview {
   attempts  InterviewAttempt[]
   feedbacks Feedback[]
   generationJobs InterviewGenerationJob[]
+  stars     InterviewStar[]
 
   @@map("interviews")
 }
@@ -87,6 +89,13 @@ enum InterviewGenerationStatus {
   PENDING
   PROCESSING
   COMPLETED
+  FAILED
+}
+
+enum InterviewAttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  TOO_SHORT
   FAILED
 }
 
@@ -118,18 +127,24 @@ model InterviewGenerationJob {
 }
 
 model InterviewAttempt {
-  id          String    @id @default(uuid())
-  interviewId String    @map("interview_id")
-  userId      String    @map("user_id")
-  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id            String                 @id @default(uuid())
+  interviewId   String                 @map("interview_id")
+  userId        String                 @map("user_id")
+  status        InterviewAttemptStatus @default(IN_PROGRESS)
+  endedAt       DateTime?              @map("ended_at") @db.Timestamptz(3)
+  completedAt   DateTime?              @map("completed_at") @db.Timestamptz(3)
+  failureReason String?                @map("failure_reason") @db.Text
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   interview   Interview    @relation(fields: [interviewId], references: [id], onDelete: Cascade)
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   transcripts Transcript[]
   feedback    Feedback?
 
+  @@index([status])
+  @@index([userId, status])
+  @@index([interviewId, status])
   @@map("interview_attempts")
 }
 
@@ -254,4 +269,19 @@ model ChallengeStar {
 
   @@unique([userId, challengeId])
   @@map("challenge_stars")
+}
+
+model InterviewStar {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  interviewId String   @map("interview_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, interviewId])
+  @@index([userId])
+  @@index([interviewId])
+  @@map("interview_stars")
 }

@@ -99,6 +99,14 @@ export class InterviewsController {
     return this.interviewsService.createAttempt(id, user.id);
   }
 
+  @Post(':id/star')
+  async toggleStar(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ) {
+    return this.interviewsService.toggleInterviewStar(user.id, id);
+  }
+
   @Post('attempts/:id/transcripts')
   async saveTranscripts(
     @Param('id') id: string,
@@ -108,10 +116,7 @@ export class InterviewsController {
   }
 
   @Delete(':id')
-  async remove(
-    @CurrentUser() user: { id: string },
-    @Param('id') id: string,
-  ) {
+  async remove(@CurrentUser() user: { id: string }, @Param('id') id: string) {
     return this.interviewsService.deleteInterview(id, user.id);
   }
 }

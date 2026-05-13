@@ -100,6 +100,18 @@ export class UsersController {
     });
   }
 
+  @Get('me/starred-interviews')
+  async getStarredInterviews(
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.usersService.getStarredInterviews(userId, {
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 10,
+    });
+  }
+
   @Get('me/solved')
   async getSolvedChallenges(
     @CurrentUser('id') userId: string,
