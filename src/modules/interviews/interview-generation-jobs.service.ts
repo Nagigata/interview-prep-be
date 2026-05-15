@@ -7,8 +7,8 @@ import {
 import { PrismaService } from '../../shared/prisma/prisma.service';
 import { AiService } from '../../shared/ai/ai.service';
 import { StartInterviewGenerationDto } from './dto/start-interview-generation.dto';
-import { InterviewGenerationGateway } from './interview-generation.gateway';
 import { InterviewGenerationJob } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 
 type JobStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
@@ -19,7 +19,7 @@ export class InterviewGenerationJobsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
-    private readonly generationGateway: InterviewGenerationGateway,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async startJob(userId: string, dto: StartInterviewGenerationDto) {
@@ -43,7 +43,6 @@ export class InterviewGenerationJobsService {
     });
 
     void this.processJob(job.id);
-    this.emitJobUpdate(job);
     return this.toResponse(job);
   }
 
@@ -76,11 +75,11 @@ export class InterviewGenerationJobsService {
     const job = await this.jobs.findUnique({ where: { id: jobId } });
     if (!job) return;
 
-    const processingJob = await this.jobs.update({
+    await this.jobs.update({
       where: { id: jobId },
       data: { status: 'PROCESSING' satisfies JobStatus },
     });
-    this.emitJobUpdate(processingJob);
+    this.emitProcessingNotification(job);
 
     try {
       const questions = await this.aiService.generateInterviewQuestions({
@@ -114,7 +113,7 @@ export class InterviewGenerationJobsService {
           completedAt: new Date(),
         },
       });
-      this.emitJobUpdate(completedJob);
+      await this.createCompletedNotification(completedJob, interview.id);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Failed to generate interview';
@@ -128,7 +127,7 @@ export class InterviewGenerationJobsService {
           completedAt: new Date(),
         },
       });
-      this.emitJobUpdate(failedJob);
+      await this.createFailedNotification(failedJob, message);
     }
   }
 
@@ -158,11 +157,58 @@ export class InterviewGenerationJobsService {
     };
   }
 
-  private emitJobUpdate(job: InterviewGenerationJob) {
-    this.generationGateway.emitGenerationJobUpdated(
-      job.userId,
-      this.toResponse(job),
-    );
+  private async createCompletedNotification(
+    job: InterviewGenerationJob,
+    interviewId: string,
+  ) {
+    await this.notificationsService.create({
+      userId: job.userId,
+      type: 'INTERVIEW_GENERATION_COMPLETED',
+      title: 'Interview ready',
+      message: `Your ${job.role} mock interview is ready with ${job.amount} questions.`,
+      actionUrl: `/interview/${interviewId}`,
+      metadata: {
+        jobId: job.id,
+        interviewId,
+        role: job.role,
+        level: job.level,
+        type: job.type,
+      },
+    });
+  }
+
+  private emitProcessingNotification(job: InterviewGenerationJob) {
+    this.notificationsService.emitRealtime(job.userId, {
+      id: `interview-generation-processing-${job.id}`,
+      type: 'INTERVIEW_GENERATION_PROCESSING',
+      title: 'Preparing your interview',
+      message: `${job.role} ${job.type} is being generated. You can keep using PrepWise while we build it.`,
+      metadata: {
+        jobId: job.id,
+        role: job.role,
+        level: job.level,
+        type: job.type,
+      },
+    });
+  }
+
+  private async createFailedNotification(
+    job: InterviewGenerationJob,
+    message: string,
+  ) {
+    await this.notificationsService.create({
+      userId: job.userId,
+      type: 'INTERVIEW_GENERATION_FAILED',
+      title: 'Interview generation failed',
+      message,
+      actionUrl: '/interview/setup',
+      metadata: {
+        jobId: job.id,
+        role: job.role,
+        level: job.level,
+        type: job.type,
+      },
+    });
   }
 
   private get jobs() {

@@ -12,6 +12,16 @@ enum Role {
   ADMIN
 }
 
+enum NotificationType {
+  INTERVIEW_GENERATION_COMPLETED
+  INTERVIEW_GENERATION_FAILED
+  FEEDBACK_GENERATION_COMPLETED
+  FEEDBACK_GENERATION_FAILED
+  CHALLENGE_COMMENT_REPLY
+  CHALLENGE_COMMENT_MENTION
+  SYSTEM
+}
+
 model User {
   id              String    @id @default(uuid())
   name            String
@@ -37,8 +47,27 @@ model User {
   interviewStars       InterviewStar[]
   adminAuditLogs       AdminAuditLog[]
   interviewGenerationJobs InterviewGenerationJob[]
+  notifications         Notification[]
 
   @@map("users")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String           @map("user_id")
+  type      NotificationType
+  title     String
+  message   String           @db.Text
+  actionUrl String?          @map("action_url")
+  metadata  Json?
+  readAt    DateTime?        @map("read_at") @db.Timestamptz(3)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([type])
+  @@map("notifications")
 }
 
 model AdminAuditLog {
@@ -94,6 +123,7 @@ enum InterviewGenerationStatus {
 
 enum InterviewAttemptStatus {
   IN_PROGRESS
+  FEEDBACK_PROCESSING
   COMPLETED
   TOO_SHORT
   FAILED

@@ -10,7 +10,8 @@ import {
 import { Server, Socket } from 'socket.io';
 import { AuthService } from '../auth/auth.service';
 
-const INTERVIEW_GENERATION_EVENT = 'interview-generation:updated';
+const NOTIFICATION_CREATED_EVENT = 'notification:new';
+const NOTIFICATIONS_READ_EVENT = 'notification:read';
 
 @WebSocketGateway({
   cors: {
@@ -18,13 +19,13 @@ const INTERVIEW_GENERATION_EVENT = 'interview-generation:updated';
     credentials: true,
   },
 })
-export class InterviewGenerationGateway
+export class NotificationsGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
   @WebSocketServer()
   server: Server;
 
-  private readonly logger = new Logger(InterviewGenerationGateway.name);
+  private readonly logger = new Logger(NotificationsGateway.name);
 
   constructor(
     private readonly jwtService: JwtService,
@@ -44,10 +45,10 @@ export class InterviewGenerationGateway
 
       client.data.userId = user.id;
       await client.join(this.getUserRoom(user.id));
-      this.logger.debug(`Socket connected for user ${user.id}`);
+      this.logger.debug(`Notification socket connected for user ${user.id}`);
     } catch (error) {
       this.logger.warn(
-        `Rejected socket connection: ${
+        `Rejected notification socket connection: ${
           error instanceof Error ? error.message : 'invalid auth'
         }`,
       );
@@ -57,14 +58,22 @@ export class InterviewGenerationGateway
 
   handleDisconnect(@ConnectedSocket() client: Socket) {
     if (client.data.userId) {
-      this.logger.debug(`Socket disconnected for user ${client.data.userId}`);
+      this.logger.debug(
+        `Notification socket disconnected for user ${client.data.userId}`,
+      );
     }
   }
 
-  emitGenerationJobUpdated(userId: string, job: unknown) {
+  emitNotificationCreated(userId: string, notification: unknown) {
     this.server
       .to(this.getUserRoom(userId))
-      .emit(INTERVIEW_GENERATION_EVENT, job);
+      .emit(NOTIFICATION_CREATED_EVENT, notification);
+  }
+
+  emitNotificationsRead(userId: string, payload: unknown) {
+    this.server
+      .to(this.getUserRoom(userId))
+      .emit(NOTIFICATIONS_READ_EVENT, payload);
   }
 
   private getUserRoom(userId: string) {
@@ -89,4 +98,3 @@ export class InterviewGenerationGateway
       .join('=');
   }
 }
-

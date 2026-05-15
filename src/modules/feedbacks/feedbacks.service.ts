@@ -3,6 +3,7 @@ import { PrismaService } from '../../shared/prisma/prisma.service';
 import { AiService } from '../../shared/ai/ai.service';
 import { InterviewsService } from '../interviews/interviews.service';
 import { CreateFeedbackDto } from './dto/create-feedback.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class FeedbacksService {
@@ -14,7 +15,59 @@ export class FeedbacksService {
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
     private readonly interviewsService: InterviewsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
+
+  async startGeneration(userId: string, createFeedbackDto: CreateFeedbackDto) {
+    const { attemptId, transcript } = createFeedbackDto;
+    const normalizedTranscript = this.normalizeTranscript(transcript);
+    const attempt = await this.interviewsService.findAttemptById(attemptId);
+    const { interview } = attempt;
+
+    await this.interviewsService.saveTranscripts(attemptId, normalizedTranscript);
+
+    const validation = this.validateMeaningfulTranscript(normalizedTranscript);
+    if (!this.shouldBypassFeedbackTranscriptValidation() && !validation.valid) {
+      const reason =
+        validation.reason || 'Interview is too short to generate feedback.';
+      await this.updateAttemptStatus(attemptId, {
+        status: 'TOO_SHORT',
+        endedAt: new Date(),
+        failureReason: reason,
+      });
+      await this.createFailedNotification(
+        userId,
+        attemptId,
+        interview,
+        reason,
+      );
+
+      return {
+        attemptId,
+        status: 'TOO_SHORT',
+        message: reason,
+      };
+    }
+
+    await this.updateAttemptStatus(attemptId, {
+      status: 'FEEDBACK_PROCESSING',
+      endedAt: new Date(),
+      failureReason: null,
+    });
+    this.emitProcessingNotification(userId, attemptId, interview);
+
+    void this.processFeedbackGeneration(
+      userId,
+      attemptId,
+      normalizedTranscript,
+      interview,
+    );
+
+    return {
+      attemptId,
+      status: 'FEEDBACK_PROCESSING',
+    };
+  }
 
   async create(userId: string, createFeedbackDto: CreateFeedbackDto) {
     const { attemptId, transcript } = createFeedbackDto;
@@ -30,15 +83,63 @@ export class FeedbacksService {
     await this.interviewsService.saveTranscripts(attemptId, normalizedTranscript);
 
     const validation = this.validateMeaningfulTranscript(normalizedTranscript);
-    if (!validation.valid) {
+    if (!this.shouldBypassFeedbackTranscriptValidation() && !validation.valid) {
+      const reason =
+        validation.reason || 'Interview is too short to generate feedback.';
       await this.updateAttemptStatus(attemptId, {
         status: 'TOO_SHORT',
         endedAt: new Date(),
-        failureReason: validation.reason,
+        failureReason: reason,
       });
 
-      throw new BadRequestException(validation.reason);
+      throw new BadRequestException(reason);
     }
+
+    return this.generateAndPersistFeedback(
+      userId,
+      attemptId,
+      normalizedTranscript,
+      interview,
+    );
+  }
+
+  private async processFeedbackGeneration(
+    userId: string,
+    attemptId: string,
+    normalizedTranscript: CreateFeedbackDto['transcript'],
+    interview: any,
+  ) {
+    try {
+      const feedback = await this.generateAndPersistFeedback(
+        userId,
+        attemptId,
+        normalizedTranscript,
+        interview,
+      );
+      await this.createCompletedNotification(
+        userId,
+        attemptId,
+        interview,
+        feedback?.id,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to generate interview feedback.';
+
+      this.logger.error(`Feedback generation failed for attempt: ${attemptId}`, error);
+      await this.createFailedNotification(userId, attemptId, interview, message);
+    }
+  }
+
+  private async generateAndPersistFeedback(
+    userId: string,
+    attemptId: string,
+    normalizedTranscript: CreateFeedbackDto['transcript'],
+    interview: any,
+  ) {
+    const interviewId = interview.id;
 
     // Check if feedback already exists for this attempt
     const existing = await this.prisma.feedback.findUnique({
@@ -53,6 +154,13 @@ export class FeedbacksService {
       aiResult = await this.aiService.generateFeedback(
         normalizedTranscript,
         interview.language,
+        {
+          role: interview.role,
+          level: interview.level,
+          type: interview.type,
+          techstack: interview.techstack,
+          language: interview.language,
+        },
       );
     } catch (error) {
       await this.updateAttemptStatus(attemptId, {
@@ -123,6 +231,71 @@ export class FeedbacksService {
     });
   }
 
+  private emitProcessingNotification(
+    userId: string,
+    attemptId: string,
+    interview: any,
+  ) {
+    this.notificationsService.emitRealtime(userId, {
+      id: `feedback-generation-processing-${attemptId}`,
+      type: 'FEEDBACK_GENERATION_PROCESSING',
+      title: 'Generating feedback',
+      message: `Your ${interview.role} interview feedback is being generated. You can keep using PrepWise while we review it.`,
+      metadata: {
+        attemptId,
+        interviewId: interview.id,
+        role: interview.role,
+        level: interview.level,
+        type: interview.type,
+      },
+    });
+  }
+
+  private async createCompletedNotification(
+    userId: string,
+    attemptId: string,
+    interview: any,
+    feedbackId?: string,
+  ) {
+    await this.notificationsService.create({
+      userId,
+      type: 'FEEDBACK_GENERATION_COMPLETED',
+      title: 'Feedback ready',
+      message: `Your ${interview.role} interview feedback is ready to review.`,
+      actionUrl: `/interview/${interview.id}/feedback?attemptId=${attemptId}`,
+      metadata: {
+        attemptId,
+        interviewId: interview.id,
+        feedbackId,
+        role: interview.role,
+        level: interview.level,
+        type: interview.type,
+      },
+    });
+  }
+
+  private async createFailedNotification(
+    userId: string,
+    attemptId: string,
+    interview: any,
+    message: string,
+  ) {
+    await this.notificationsService.create({
+      userId,
+      type: 'FEEDBACK_GENERATION_FAILED',
+      title: 'Feedback was not generated',
+      message,
+      actionUrl: `/interview/${interview.id}`,
+      metadata: {
+        attemptId,
+        interviewId: interview.id,
+        role: interview.role,
+        level: interview.level,
+        type: interview.type,
+      },
+    });
+  }
+
   async findByInterviewId(interviewId: string, userId: string) {
     return this.prisma.feedback.findFirst({
       where: {
@@ -171,6 +344,10 @@ export class FeedbacksService {
     }
 
     return { valid: true };
+  }
+
+  private shouldBypassFeedbackTranscriptValidation() {
+    return process.env.BYPASS_FEEDBACK_TRANSCRIPT_VALIDATION === 'true';
   }
 
   private normalizeTranscript(

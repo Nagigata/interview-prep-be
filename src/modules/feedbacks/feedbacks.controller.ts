@@ -15,6 +15,14 @@ export class FeedbacksController {
     return this.feedbacksService.create(user.id, createFeedbackDto);
   }
 
+  @Post('start-generation')
+  async startGeneration(
+    @CurrentUser() user: { id: string },
+    @Body() createFeedbackDto: CreateFeedbackDto,
+  ) {
+    return this.feedbacksService.startGeneration(user.id, createFeedbackDto);
+  }
+
   @Get('interview/:interviewId')
   async findByInterview(
     @CurrentUser() user: { id: string },

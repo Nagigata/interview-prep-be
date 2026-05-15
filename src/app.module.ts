@@ -12,6 +12,7 @@ import { ChallengesModule } from './modules/challenges/challenges.module';
 import { SubmissionsModule } from './modules/submissions/submissions.module';
 import { MailModule } from './shared/mail/mail.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AdminModule } from './modules/admin/admin.module';
     SubmissionsModule,
     MailModule,
     AdminModule,
+    NotificationsModule,
   ],
   providers: [
     {
@@ -36,4 +38,3 @@ import { AdminModule } from './modules/admin/admin.module';
   ],
 })
 export class AppModule {}
-

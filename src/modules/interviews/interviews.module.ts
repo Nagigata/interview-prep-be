@@ -4,17 +4,13 @@ import { InterviewsController } from './interviews.controller';
 import { VapiWebhookController } from './vapi-webhook.controller';
 import { AiModule } from '../../shared/ai/ai.module';
 import { InterviewGenerationJobsService } from './interview-generation-jobs.service';
-import { InterviewGenerationGateway } from './interview-generation.gateway';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [AiModule, AuthModule],
+  imports: [AiModule, AuthModule, NotificationsModule],
   controllers: [InterviewsController, VapiWebhookController],
-  providers: [
-    InterviewsService,
-    InterviewGenerationJobsService,
-    InterviewGenerationGateway,
-  ],
+  providers: [InterviewsService, InterviewGenerationJobsService],
   exports: [InterviewsService, InterviewGenerationJobsService],
 })
 export class InterviewsModule {}

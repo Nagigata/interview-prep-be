@@ -1,21 +1,21 @@
-# Local Qwen Interview Question Model Server
+# Local Qwen Interview Model Servers
 
-This FastAPI service serves the fine-tuned Qwen LoRA adapter used for interview question generation.
+This FastAPI service serves the fine-tuned Qwen LoRA adapters used for interview question and feedback generation.
 
-The NestJS backend keeps Gemini as the default provider. Set `AI_QUESTION_PROVIDER=local-qwen` to route question generation to this local server.
+The NestJS backend keeps Gemini as the safe fallback provider. Set `AI_QUESTION_PROVIDER=local-qwen` or `AI_FEEDBACK_PROVIDER=local-qwen` to route generation to local Qwen.
 
 ## Folder Assumption
 
-By default, the server expects the LoRA adapter folder here:
+By default, the server expects the question LoRA adapter folder here:
 
 ```txt
 D:\DAIHOC\DATN\qwen_interview_questions_lora
 ```
 
-Override it with:
+and the feedback LoRA adapter folder here:
 
-```env
-LOCAL_MODEL_ADAPTER_PATH=D:\DAIHOC\DATN\qwen_interview_questions_lora
+```txt
+D:\DAIHOC\DATN\qwen_interview_feedback_lora\qwen_interview_feedback_lora
 ```
 
 ## Setup
@@ -27,16 +27,25 @@ python -m venv .venv-model
 pip install -r model-server\requirements.txt
 ```
 
-## Start Server
+## Start Servers
+
+Question server:
 
 ```bash
-uvicorn app:app --app-dir model-server --host 0.0.0.0 --port 8001
+npm run model:questions
 ```
 
-Health check:
+Feedback server:
+
+```bash
+npm run model:feedback
+```
+
+Health checks:
 
 ```bash
 curl http://localhost:8001/health
+curl http://localhost:8002/health
 ```
 
 ## Backend Environment
@@ -51,8 +60,10 @@ Use local Qwen LoRA:
 
 ```env
 AI_QUESTION_PROVIDER=local-qwen
-LOCAL_MODEL_URL=http://localhost:8001
-AI_LOCAL_FALLBACK_TO_GEMINI=false
+AI_FEEDBACK_PROVIDER=local-qwen
+LOCAL_QUESTION_MODEL_URL=http://localhost:8001
+LOCAL_FEEDBACK_MODEL_URL=http://localhost:8002
+AI_LOCAL_FALLBACK_TO_GEMINI=true
 LOCAL_MODEL_TIMEOUT_MS=600000
 ```
 
@@ -60,12 +71,15 @@ Optional model server env:
 
 ```env
 LOCAL_MODEL_BASE_MODEL=unsloth/qwen2.5-3b-instruct-bnb-4bit
-LOCAL_MODEL_ADAPTER_PATH=D:\DAIHOC\DATN\qwen_interview_questions_lora
+LOCAL_QUESTION_MODEL_ADAPTER_PATH=D:\DAIHOC\DATN\qwen_interview_questions_lora
+LOCAL_FEEDBACK_MODEL_ADAPTER_PATH=D:\DAIHOC\DATN\qwen_interview_feedback_lora\qwen_interview_feedback_lora
 LOCAL_MODEL_LOAD_IN_4BIT=true
 LOCAL_MODEL_MAX_NEW_TOKENS=1400
+LOCAL_FEEDBACK_MODEL_MAX_NEW_TOKENS=900
 LOCAL_MODEL_TEMPERATURE=0.7
 LOCAL_MODEL_TOP_P=0.9
 LOCAL_MODEL_REPETITION_PENALTY=1.05
+LOCAL_FEEDBACK_MODEL_REPETITION_PENALTY=1.05
 LOCAL_MODEL_DEVICE=cuda
 ```
 
@@ -76,4 +90,6 @@ LOCAL_MODEL_DEVICE=cuda
 - GPU is strongly recommended. CPU inference may work but will be slow.
 - `LOCAL_MODEL_LOAD_IN_4BIT=true` is recommended for 6GB VRAM GPUs.
 - If the local server fails and `AI_LOCAL_FALLBACK_TO_GEMINI=true`, NestJS will fall back to Gemini automatically.
+- The feedback model is experimental. Keep backend transcript validation enabled so empty or too-short interviews are rejected before calling the model.
+- For local 6GB VRAM machines, run only the model server you are actively testing. Running question and feedback models at the same time can be heavy.
 - If you see warnings about copying LoRA weights to `meta` parameters, restart the model server after updating `model-server/app.py`; the server now loads the base model into real memory before attaching the LoRA adapter.

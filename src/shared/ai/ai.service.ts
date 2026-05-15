@@ -41,13 +41,29 @@ interface LocalQuestionsResponse {
   provider?: string;
 }
 
+interface FeedbackContext {
+  role?: string;
+  level?: string;
+  type?: string;
+  techstack?: string[] | string;
+  language?: string;
+}
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private readonly questionProvider =
     process.env.AI_QUESTION_PROVIDER || 'gemini';
-  private readonly localModelUrl =
-    process.env.LOCAL_MODEL_URL || 'http://localhost:8001';
+  private readonly feedbackProvider =
+    process.env.AI_FEEDBACK_PROVIDER || 'gemini';
+  private readonly localQuestionModelUrl =
+    process.env.LOCAL_QUESTION_MODEL_URL ||
+    process.env.LOCAL_MODEL_URL ||
+    'http://localhost:8001';
+  private readonly localFeedbackModelUrl =
+    process.env.LOCAL_FEEDBACK_MODEL_URL ||
+    process.env.LOCAL_MODEL_URL ||
+    'http://localhost:8002';
   private readonly localFallbackToGemini =
     process.env.AI_LOCAL_FALLBACK_TO_GEMINI !== 'false';
 
@@ -124,7 +140,7 @@ export class AiService {
 
     try {
       const response = await fetch(
-        `${this.localModelUrl.replace(/\/$/, '')}/generate-questions`,
+        `${this.localQuestionModelUrl.replace(/\/$/, '')}/generate-questions`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -161,6 +177,34 @@ export class AiService {
   async generateFeedback(
     transcript: { role: string; content: string }[],
     language: string = 'en',
+    context: FeedbackContext = {},
+  ): Promise<FeedbackResult> {
+    const provider = this.feedbackProvider;
+
+    if (provider === 'local-qwen') {
+      try {
+        return await this.generateFeedbackWithLocalQwen(
+          transcript,
+          language,
+          context,
+        );
+      } catch (error) {
+        this.logger.error('Local Qwen feedback generation failed', error);
+
+        if (!this.localFallbackToGemini) {
+          throw error;
+        }
+
+        this.logger.warn('Falling back to Gemini feedback generation');
+      }
+    }
+
+    return this.generateFeedbackWithGemini(transcript, language);
+  }
+
+  private async generateFeedbackWithGemini(
+    transcript: { role: string; content: string }[],
+    language: string = 'en',
   ): Promise<FeedbackResult> {
     const formattedTranscript = transcript
       .map((sentence) => `- ${sentence.role}: ${sentence.content}\n`)
@@ -193,5 +237,54 @@ export class AiService {
     });
 
     return object;
+  }
+
+  private async generateFeedbackWithLocalQwen(
+    transcript: { role: string; content: string }[],
+    language: string,
+    context: FeedbackContext,
+  ): Promise<FeedbackResult> {
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      Number(
+        process.env.LOCAL_FEEDBACK_MODEL_TIMEOUT_MS ||
+          process.env.LOCAL_MODEL_TIMEOUT_MS ||
+          120000,
+      ),
+    );
+
+    try {
+      const response = await fetch(
+        `${this.localFeedbackModelUrl.replace(/\/$/, '')}/generate-feedback`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: context.role || '',
+            level: context.level || '',
+            type: context.type || '',
+            techstack: Array.isArray(context.techstack)
+              ? context.techstack.join(', ')
+              : context.techstack || '',
+            language: context.language || language || 'en',
+            transcript,
+          }),
+          signal: controller.signal,
+        },
+      );
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(
+          `Local feedback model server returned ${response.status}: ${detail}`,
+        );
+      }
+
+      const data = await response.json();
+      return feedbackSchema.parse(data);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }
