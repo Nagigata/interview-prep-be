@@ -18,16 +18,18 @@ export class FeedbacksService {
 
   async create(userId: string, createFeedbackDto: CreateFeedbackDto) {
     const { attemptId, transcript } = createFeedbackDto;
+    const normalizedTranscript = this.normalizeTranscript(transcript);
 
     // Validate interview attempt exists
     const attempt = await this.interviewsService.findAttemptById(attemptId);
     const { interview } = attempt;
     const interviewId = interview.id;
 
-    // Save transcripts
-    await this.interviewsService.saveTranscripts(attemptId, transcript);
+    // Save a cleaned transcript so feedback and history are not polluted by
+    // short STT fragments such as "and", "step", or greeting-only turns.
+    await this.interviewsService.saveTranscripts(attemptId, normalizedTranscript);
 
-    const validation = this.validateMeaningfulTranscript(transcript);
+    const validation = this.validateMeaningfulTranscript(normalizedTranscript);
     if (!validation.valid) {
       await this.updateAttemptStatus(attemptId, {
         status: 'TOO_SHORT',
@@ -49,7 +51,7 @@ export class FeedbacksService {
 
     try {
       aiResult = await this.aiService.generateFeedback(
-        transcript,
+        normalizedTranscript,
         interview.language,
       );
     } catch (error) {
@@ -169,6 +171,110 @@ export class FeedbacksService {
     }
 
     return { valid: true };
+  }
+
+  private normalizeTranscript(
+    transcript: CreateFeedbackDto['transcript'],
+  ): CreateFeedbackDto['transcript'] {
+    const normalized = transcript
+      .map((item) => ({
+        role: item.role.trim().toLowerCase(),
+        content: this.cleanTranscriptContent(item.content),
+      }))
+      .filter((item) => this.isSupportedTranscriptRole(item.role))
+      .filter((item) => item.content.length > 0)
+      .filter((item) => !this.isLowSignalTranscriptMessage(item));
+
+    const merged: CreateFeedbackDto['transcript'] = [];
+
+    for (const item of normalized) {
+      const previous = merged[merged.length - 1];
+
+      if (previous?.role === item.role) {
+        previous.content = this.mergeTranscriptContent(
+          previous.content,
+          item.content,
+        );
+        continue;
+      }
+
+      merged.push({ ...item });
+    }
+
+    return merged.filter((item) => !this.isLowSignalTranscriptMessage(item));
+  }
+
+  private cleanTranscriptContent(content: string) {
+    return content
+      .replace(/\s+/g, ' ')
+      .replace(/\s+([,.!?])/g, '$1')
+      .trim();
+  }
+
+  private mergeTranscriptContent(current: string, next: string) {
+    if (!current) return next;
+    if (!next) return current;
+
+    const separator = /[.!?]$/.test(current) ? ' ' : ' ';
+    return `${current}${separator}${next}`;
+  }
+
+  private isSupportedTranscriptRole(role: string) {
+    return role === 'assistant' || role === 'user';
+  }
+
+  private isLowSignalTranscriptMessage(item: { role: string; content: string }) {
+    const text = item.content
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!text) return true;
+
+    if (item.role === 'assistant') {
+      return this.isLowSignalAssistantMessage(text, item.content);
+    }
+
+    return this.isLowSignalUserMessage(text);
+  }
+
+  private isLowSignalAssistantMessage(text: string, original: string) {
+    const lowSignalAssistantPhrases = new Set([
+      'hello',
+      'great',
+      'alright',
+      'ok',
+      'okay',
+      'have a great day',
+      'let me simplify',
+      'alright let me simplify',
+      'thank you for taking the time to speak with me today',
+      'im excited to learn more about you and your experience',
+      'if you have any questions later feel free to reach out',
+    ]);
+
+    if (lowSignalAssistantPhrases.has(text)) return true;
+
+    const wordCount = text.split(' ').length;
+    return wordCount <= 3 && !original.includes('?');
+  }
+
+  private isLowSignalUserMessage(text: string) {
+    const lowSignalUserPhrases = new Set([
+      'and',
+      'step',
+      'view info',
+      'information',
+      'thanks',
+      'thank you',
+      'ok',
+      'okay',
+      'hello',
+      'hi',
+    ]);
+
+    return lowSignalUserPhrases.has(text);
   }
 
   private async updateAttemptStatus(

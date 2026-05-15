@@ -6,7 +6,12 @@ type PaginationParams = {
   limit?: number;
   status?: string[];
   difficulty?: string[];
+  type?: string[];
+  level?: string[];
+  activityType?: string;
 };
+
+type ActivityType = 'all' | 'challenges' | 'interviews';
 
 @Injectable()
 export class UsersService {
@@ -414,10 +419,41 @@ export class UsersService {
     const limit = Math.min(Math.max(params.limit || 10, 1), 50);
     const skip = (page - 1) * limit;
     const interviewStar = (this.prisma as any).interviewStar;
+    const normalizedTypes = (params.type || [])
+      .map((type) => type.trim())
+      .filter((type) => type && type.toLowerCase() !== 'all');
+    const normalizedLevels = (params.level || [])
+      .map((level) => level.trim())
+      .filter((level) => level && level.toLowerCase() !== 'all');
+
+    const interviewWhere: any = {};
+
+    if (normalizedTypes.length > 0) {
+      interviewWhere.OR = normalizedTypes.map((type) => ({
+        type: {
+          contains: type,
+          mode: 'insensitive',
+        },
+      }));
+    }
+
+    if (normalizedLevels.length > 0) {
+      interviewWhere.level = {
+        in: normalizedLevels,
+      };
+    }
+
+    const starredWhere: any = {
+      userId,
+    };
+
+    if (Object.keys(interviewWhere).length > 0) {
+      starredWhere.interview = interviewWhere;
+    }
 
     const [items, total] = await Promise.all([
       interviewStar.findMany({
-        where: { userId },
+        where: starredWhere,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
@@ -437,7 +473,7 @@ export class UsersService {
           },
         },
       }),
-      interviewStar.count({ where: { userId } }),
+      interviewStar.count({ where: starredWhere }),
     ]);
 
     const mappedItems = items.map((item: any) => ({
@@ -535,6 +571,7 @@ export class UsersService {
     const limit = Math.min(Math.max(params.limit || 20, 1), 50);
     const skip = (page - 1) * limit;
     const takeForMerge = skip + limit;
+    const activityType = this.normalizeActivityType(params.activityType);
     const completedInterviewWhere = {
       userId,
       status: 'COMPLETED',
@@ -546,8 +583,75 @@ export class UsersService {
       },
     };
 
-    const [submissions, submissionTotal, interviewAttempts, interviewTotal] =
-      await Promise.all([
+    const [submissionTotal, interviewTotal] = await Promise.all([
+      this.prisma.challengeSubmission.count({
+        where: { userId },
+      }),
+      (this.prisma.interviewAttempt.count as any)({
+        where: completedInterviewWhere,
+      }),
+    ]);
+
+    let items: any[] = [];
+    let total = submissionTotal + interviewTotal;
+
+    if (activityType === 'challenges') {
+      const submissions = await this.prisma.challengeSubmission.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          challenge: {
+            select: {
+              id: true,
+              title: true,
+              difficulty: true,
+              skill: {
+                select: {
+                  slug: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      items = submissions.map((submission) =>
+        this.mapSubmissionActivity(submission),
+      );
+      total = submissionTotal;
+    } else if (activityType === 'interviews') {
+      const interviewAttempts = await (
+        this.prisma.interviewAttempt.findMany as any
+      )({
+        where: completedInterviewWhere,
+        orderBy: { completedAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          interview: {
+            select: {
+              id: true,
+              role: true,
+              level: true,
+              type: true,
+            },
+          },
+          feedback: {
+            select: {
+              totalScore: true,
+            },
+          },
+        },
+      });
+
+      items = interviewAttempts.map((attempt: any) =>
+        this.mapInterviewAttemptActivity(attempt),
+      );
+      total = interviewTotal;
+    } else {
+      const [submissions, interviewAttempts] = await Promise.all([
         this.prisma.challengeSubmission.findMany({
           where: { userId },
           orderBy: { createdAt: 'desc' },
@@ -566,9 +670,6 @@ export class UsersService {
               },
             },
           },
-        }),
-        this.prisma.challengeSubmission.count({
-          where: { userId },
         }),
         (this.prisma.interviewAttempt.findMany as any)({
           where: completedInterviewWhere,
@@ -590,19 +691,16 @@ export class UsersService {
             },
           },
         }),
-        (this.prisma.interviewAttempt.count as any)({
-          where: completedInterviewWhere,
-        }),
       ]);
-    const total = submissionTotal + interviewTotal;
 
-    const items = this.mergeRecentActivity(
-      submissions.map((submission) => this.mapSubmissionActivity(submission)),
-      interviewAttempts.map((attempt: any) =>
-        this.mapInterviewAttemptActivity(attempt),
-      ),
-      takeForMerge,
-    ).slice(skip, skip + limit);
+      items = this.mergeRecentActivity(
+        submissions.map((submission) => this.mapSubmissionActivity(submission)),
+        interviewAttempts.map((attempt: any) =>
+          this.mapInterviewAttemptActivity(attempt),
+        ),
+        takeForMerge,
+      ).slice(skip, skip + limit);
+    }
 
     return {
       items,
@@ -610,6 +708,11 @@ export class UsersService {
       limit,
       total,
       totalPages: Math.ceil(total / limit) || 1,
+      summary: {
+        total: submissionTotal + interviewTotal,
+        challengeSubmissions: submissionTotal,
+        interviewAttempts: interviewTotal,
+      },
     };
   }
 
@@ -816,5 +919,13 @@ export class UsersService {
     const [year, month, day] = dateKey.split('-').map(Number);
     const date = new Date(Date.UTC(year, month - 1, day + 1));
     return date.toISOString().slice(0, 10);
+  }
+
+  private normalizeActivityType(activityType?: string): ActivityType {
+    if (activityType === 'challenges' || activityType === 'interviews') {
+      return activityType;
+    }
+
+    return 'all';
   }
 }

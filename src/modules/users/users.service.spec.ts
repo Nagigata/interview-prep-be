@@ -207,4 +207,134 @@ describe('UsersService', () => {
     );
     expect(result.total).toBe(1);
   });
+
+  it('filters starred interviews through the database query', async () => {
+    const prisma = createPrismaMock();
+    const service = new UsersService(prisma as any);
+
+    await service.getStarredInterviews(userId, {
+      page: 1,
+      limit: 10,
+      type: ['Mix'],
+      level: ['Senior'],
+    });
+
+    expect(prisma.interviewStar.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId,
+          interview: {
+            OR: [
+              {
+                type: {
+                  contains: 'Mix',
+                  mode: 'insensitive',
+                },
+              },
+            ],
+            level: {
+              in: ['Senior'],
+            },
+          },
+        },
+      }),
+    );
+    expect(prisma.interviewStar.count).toHaveBeenCalledWith({
+      where: {
+        userId,
+        interview: {
+          OR: [
+            {
+              type: {
+                contains: 'Mix',
+                mode: 'insensitive',
+              },
+            },
+          ],
+          level: {
+            in: ['Senior'],
+          },
+        },
+      },
+    });
+  });
+
+  it('filters practice history to completed interview attempts with summary counts', async () => {
+    const prisma = {
+      challengeSubmission: {
+        count: jest.fn().mockResolvedValue(2),
+        findMany: jest.fn(),
+      },
+      interviewAttempt: {
+        count: jest.fn().mockResolvedValue(3),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'attempt-2',
+            interviewId: 'interview-2',
+            completedAt: new Date('2026-05-14T08:00:00.000Z'),
+            interview: {
+              role: 'Backend Developer',
+              level: 'Senior',
+              type: 'Technical',
+            },
+            feedback: {
+              totalScore: 91,
+            },
+          },
+        ]),
+      },
+    };
+    const service = new UsersService(prisma as any);
+
+    const result = await service.getRecentActivity(userId, {
+      page: 1,
+      limit: 10,
+      activityType: 'interviews',
+    });
+
+    expect(prisma.challengeSubmission.findMany).not.toHaveBeenCalled();
+    expect(prisma.interviewAttempt.findMany).toHaveBeenCalledWith({
+      where: {
+        userId,
+        status: 'COMPLETED',
+        completedAt: {
+          not: null,
+        },
+        feedback: {
+          isNot: null,
+        },
+      },
+      orderBy: { completedAt: 'desc' },
+      skip: 0,
+      take: 10,
+      include: {
+        interview: {
+          select: {
+            id: true,
+            role: true,
+            level: true,
+            type: true,
+          },
+        },
+        feedback: {
+          select: {
+            totalScore: true,
+          },
+        },
+      },
+    });
+    expect(result.total).toBe(3);
+    expect(result.summary).toEqual({
+      total: 5,
+      challengeSubmissions: 2,
+      interviewAttempts: 3,
+    });
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        activityType: 'INTERVIEW_ATTEMPT',
+        interviewRole: 'Backend Developer',
+        score: 91,
+      }),
+    );
+  });
 });

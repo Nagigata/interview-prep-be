@@ -131,4 +131,73 @@ describe('FeedbacksService', () => {
       },
     });
   });
+
+  it('normalizes noisy voice transcript fragments before saving and generating feedback', async () => {
+    const { service, prisma, aiService, interviewsService } = createMocks();
+    const transcript = [
+      { role: 'assistant', content: 'Hello.' },
+      { role: 'assistant', content: 'Tell me about asynchronous JavaScript.' },
+      { role: 'user', content: 'And' },
+      {
+        role: 'user',
+        content:
+          'Asynchronous JavaScript lets the app keep running while waiting for long operations.',
+      },
+      { role: 'assistant', content: 'Great.' },
+      { role: 'assistant', content: 'Can you give an example?' },
+      { role: 'user', content: 'Information.' },
+      {
+        role: 'user',
+        content:
+          'For example, a promise or async await can wait for an API request without blocking rendering.',
+      },
+    ];
+    const normalizedTranscript = [
+      {
+        role: 'assistant',
+        content: 'Tell me about asynchronous JavaScript.',
+      },
+      {
+        role: 'user',
+        content:
+          'Asynchronous JavaScript lets the app keep running while waiting for long operations.',
+      },
+      { role: 'assistant', content: 'Can you give an example?' },
+      {
+        role: 'user',
+        content:
+          'For example, a promise or async await can wait for an API request without blocking rendering.',
+      },
+    ];
+
+    prisma.feedback.findUnique.mockResolvedValue(null);
+    aiService.generateFeedback.mockResolvedValue({
+      totalScore: 80,
+      strengths: ['Understands async basics'],
+      areasForImprovement: ['Add event loop details'],
+      finalAssessment: 'The candidate gave a usable explanation.',
+      categoryScores: [{ name: 'Technical', score: 80, comment: 'Good' }],
+    });
+    prisma.feedback.create.mockResolvedValue({ id: 'feedback-1' });
+    prisma.feedback.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'feedback-1',
+        categoryScores: [],
+      });
+
+    await service.create(userId, {
+      attemptId,
+      transcript,
+    });
+
+    expect(interviewsService.saveTranscripts).toHaveBeenCalledWith(
+      attemptId,
+      normalizedTranscript,
+    );
+    expect(aiService.generateFeedback).toHaveBeenCalledWith(
+      normalizedTranscript,
+      'en',
+    );
+  });
 });

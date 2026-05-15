@@ -105,10 +105,14 @@ export class UsersController {
     @CurrentUser('id') userId: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('type') type?: string | string[],
+    @Query('level') level?: string | string[],
   ) {
     return this.usersService.getStarredInterviews(userId, {
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 10,
+      type: Array.isArray(type) ? type : type ? [type] : [],
+      level: Array.isArray(level) ? level : level ? [level] : [],
     });
   }
 
@@ -129,10 +133,12 @@ export class UsersController {
     @CurrentUser('id') userId: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('activityType') activityType?: string,
   ) {
     return this.usersService.getRecentActivity(userId, {
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 20,
+      activityType,
     });
   }
 

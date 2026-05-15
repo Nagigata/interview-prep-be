@@ -176,6 +176,8 @@ export class AiService {
 
         CRITICAL INSTRUCTION: Your feedback evaluation must be written exclusively in ${langInstruction}. The category names in the response must remain exactly as structurally required, but the comments, strengths, areasForImprovement, and finalAssessment must be in ${langInstruction}.
 
+        TRANSCRIPT QUALITY INSTRUCTION: This transcript comes from a voice interview and may contain speech-to-text errors, fragmented sentences, repeated short turns, unclear pronunciation, filler words, or interrupted answers. Evaluate only the candidate's clearly expressed ideas. Do not invent missing details. Ignore greeting-only, closing-only, or obvious non-answer fragments. If an answer is unclear because of transcript quality, mention that as a communication or clarity issue instead of assuming the candidate knew the full answer.
+
         Transcript:
         ${formattedTranscript}
 
