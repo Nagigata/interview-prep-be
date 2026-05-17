@@ -23,31 +23,31 @@ enum NotificationType {
 }
 
 model User {
-  id              String    @id @default(uuid())
-  name            String
-  email           String    @unique
-  password        String?
-  role            Role      @default(USER)
-  isActive        Boolean   @default(true) @map("is_active")
-  provider        String?   @default("LOCAL")
-  providerId      String?   @map("provider_id")
-  avatarUrl       String?   @map("avatar_url")
-  resetCode       String?   @map("reset_code")
-  resetCodeExpiry DateTime? @map("reset_code_expiry") @db.Timestamptz(3)
-  resetToken      String?   @map("reset_token")
+  id               String    @id @default(uuid())
+  name             String
+  email            String    @unique
+  password         String?
+  role             Role      @default(USER)
+  isActive         Boolean   @default(true) @map("is_active")
+  provider         String?   @default("LOCAL")
+  providerId       String?   @map("provider_id")
+  avatarUrl        String?   @map("avatar_url")
+  resetCode        String?   @map("reset_code")
+  resetCodeExpiry  DateTime? @map("reset_code_expiry") @db.Timestamptz(3)
+  resetToken       String?   @map("reset_token")
   resetTokenExpiry DateTime? @map("reset_token_expiry") @db.Timestamptz(3)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  interviews           Interview[]
-  interviewAttempts    InterviewAttempt[]
-  feedbacks            Feedback[]
-  challengeSubmissions ChallengeSubmission[]
-  challengeStars       ChallengeStar[]
-  interviewStars       InterviewStar[]
-  adminAuditLogs       AdminAuditLog[]
+  interviews              Interview[]
+  interviewAttempts       InterviewAttempt[]
+  feedbacks               Feedback[]
+  challengeSubmissions    ChallengeSubmission[]
+  challengeStars          ChallengeStar[]
+  interviewStars          InterviewStar[]
+  adminAuditLogs          AdminAuditLog[]
   interviewGenerationJobs InterviewGenerationJob[]
-  notifications         Notification[]
+  notifications           Notification[]
 
   @@map("users")
 }
@@ -72,7 +72,7 @@ model Notification {
 
 model AdminAuditLog {
   id         String   @id @default(uuid())
-  adminId   String   @map("admin_id")
+  adminId    String   @map("admin_id")
   action     String
   entityType String   @map("entity_type")
   entityId   String?  @map("entity_id")
@@ -92,24 +92,24 @@ model AdminAuditLog {
 }
 
 model Interview {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  role      String
-  level     String
-  type      String
-  techstack String[]
-  questions String[]
-  language  String   @default("en")
-  finalized Boolean  @default(false)
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  role       String
+  level      String
+  type       String
+  techstack  String[]
+  questions  String[]
+  language   String    @default("en")
+  finalized  Boolean   @default(false)
   archivedAt DateTime? @map("archived_at") @db.Timestamptz(3)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user      User               @relation(fields: [userId], references: [id])
-  attempts  InterviewAttempt[]
-  feedbacks Feedback[]
+  user           User                     @relation(fields: [userId], references: [id])
+  attempts       InterviewAttempt[]
+  feedbacks      Feedback[]
   generationJobs InterviewGenerationJob[]
-  stars     InterviewStar[]
+  stars          InterviewStar[]
 
   @@map("interviews")
 }
@@ -271,16 +271,20 @@ model Challenge {
 }
 
 model ChallengeSubmission {
-  id           String   @id @default(uuid())
-  challengeId  String   @map("challenge_id")
-  userId       String   @map("user_id")
-  code         String   @db.Text
-  language     String
-  status       String   @default("PENDING")
-  runtime      Int?
-  memory       Int?
-  errorMessage String?  @map("error_message") @db.Text
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id              String   @id @default(uuid())
+  challengeId     String   @map("challenge_id")
+  userId          String   @map("user_id")
+  code            String   @db.Text
+  language        String
+  status          String   @default("PENDING")
+  runtime         Int?
+  memory          Int?
+  passedTestCases Int?     @map("passed_test_cases")
+  totalTestCases  Int?     @map("total_test_cases")
+  errorMessage    String?  @map("error_message") @db.Text
+  note            String?  @db.Text
+  noteColor       String?  @map("note_color")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   challenge Challenge @relation(fields: [challengeId], references: [id])
   user      User      @relation(fields: [userId], references: [id])

@@ -38,6 +38,135 @@ export class SubmissionsService {
     return map[langKey] || 63;
   }
 
+  async getChallengeSubmissionHistory(
+    challengeId: string,
+    userId: string,
+    query: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      language?: string;
+    } = {},
+  ) {
+    const page = this.normalizePage(query.page);
+    const limit = this.normalizeLimit(query.limit);
+    const baseWhere = { challengeId, userId };
+    const where = {
+      ...baseWhere,
+      ...this.getSubmissionFilters(query),
+    };
+
+    const [items, total, statusRows, languageRows] = await Promise.all([
+      this.challengeSubmissions.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          language: true,
+          status: true,
+          runtime: true,
+          memory: true,
+          passedTestCases: true,
+          totalTestCases: true,
+          errorMessage: true,
+          note: true,
+          noteColor: true,
+          createdAt: true,
+        },
+      }),
+      this.challengeSubmissions.count({ where }),
+      this.challengeSubmissions.findMany({
+        where: baseWhere,
+        distinct: ['status'],
+        orderBy: { status: 'asc' },
+        select: { status: true },
+      }),
+      this.challengeSubmissions.findMany({
+        where: baseWhere,
+        distinct: ['language'],
+        orderBy: { language: 'asc' },
+        select: { language: true },
+      }),
+    ]);
+
+    return {
+      items,
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      filters: {
+        statuses: statusRows
+          .map((row: { status?: string | null }) => row.status)
+          .filter(Boolean),
+        languages: languageRows
+          .map((row: { language?: string | null }) => row.language)
+          .filter(Boolean),
+      },
+    };
+  }
+
+  async updateSubmissionNote(
+    submissionId: string,
+    userId: string,
+    note?: string | null,
+    noteColor?: string | null,
+  ) {
+    const submission = await this.challengeSubmissions.findFirst({
+      where: { id: submissionId, userId },
+      select: { id: true },
+    });
+
+    if (!submission) {
+      throw new NotFoundException('Submission not found');
+    }
+
+    const normalizedNote = typeof note === 'string' ? note.trim() : '';
+    const normalizedNoteColor = this.normalizeNoteColor(noteColor);
+
+    return this.challengeSubmissions.update({
+      where: { id: submissionId },
+      data: {
+        note: normalizedNote ? normalizedNote : null,
+        noteColor: normalizedNote ? normalizedNoteColor : null,
+      },
+      select: {
+        id: true,
+        note: true,
+        noteColor: true,
+      },
+    });
+  }
+
+  async getSubmissionDetail(submissionId: string, userId: string) {
+    const submission = await this.challengeSubmissions.findFirst({
+      where: { id: submissionId, userId },
+      select: {
+        id: true,
+        challengeId: true,
+        language: true,
+        status: true,
+        runtime: true,
+        memory: true,
+        passedTestCases: true,
+        totalTestCases: true,
+        errorMessage: true,
+        note: true,
+        noteColor: true,
+        code: true,
+        createdAt: true,
+      },
+    });
+
+    if (!submission) {
+      throw new NotFoundException('Submission not found');
+    }
+
+    return submission;
+  }
+
   async runCode(
     challengeId: string,
     userId: string,
@@ -113,8 +242,13 @@ export class SubmissionsService {
       }
     }
 
+    const passedTestCases = results.filter(
+      (result) => result.status?.id === 3,
+    ).length;
+    const totalTestCases = testCases.length;
+
     // Record submission in DB
-    const submission = await this.prisma.challengeSubmission.create({
+    const submission = await this.challengeSubmissions.create({
       data: {
         challengeId,
         userId,
@@ -126,6 +260,8 @@ export class SubmissionsService {
           ? Math.round(parseFloat(results[0].time) * 1000)
           : null,
         memory: results[0]?.memory || null,
+        passedTestCases,
+        totalTestCases,
       },
     });
 
@@ -133,6 +269,8 @@ export class SubmissionsService {
       submissionId: submission.id,
       testCaseResults: results,
       allPassed,
+      passedTestCases,
+      totalTestCases,
     };
   }
 
@@ -189,5 +327,51 @@ export class SubmissionsService {
         `Judge0 Execution Error: ${error.message}`,
       );
     }
+  }
+
+  private normalizePage(value?: number) {
+    const page = Number(value);
+    return Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+  }
+
+  private normalizeLimit(value?: number) {
+    const limit = Number(value);
+    if (!Number.isFinite(limit) || limit <= 0) return 10;
+    return Math.min(Math.floor(limit), 50);
+  }
+
+  private getSubmissionFilters(query: {
+    status?: string;
+    language?: string;
+  }) {
+    const filters: Record<string, string> = {};
+    const status = query.status?.trim().toUpperCase();
+    const language = query.language?.trim().toLowerCase();
+
+    if (status && status !== 'ALL') {
+      filters.status = status;
+    }
+
+    if (language && language !== 'all') {
+      filters.language = language;
+    }
+
+    return filters;
+  }
+
+  private normalizeNoteColor(value?: string | null) {
+    const allowedColors = new Set([
+      'gray',
+      'yellow',
+      'blue',
+      'green',
+      'pink',
+      'purple',
+    ]);
+    return value && allowedColors.has(value) ? value : 'gray';
+  }
+
+  private get challengeSubmissions() {
+    return (this.prisma as any).challengeSubmission;
   }
 }
