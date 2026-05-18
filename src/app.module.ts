@@ -13,6 +13,7 @@ import { SubmissionsModule } from './modules/submissions/submissions.module';
 import { MailModule } from './shared/mail/mail.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { SolutionsModule } from './modules/solutions/solutions.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     MailModule,
     AdminModule,
     NotificationsModule,
+    SolutionsModule,
   ],
   providers: [
     {
