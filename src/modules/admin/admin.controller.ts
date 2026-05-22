@@ -18,12 +18,15 @@ import { AdminInterviewsService } from './services/admin-interviews.service';
 import { AdminChallengesService } from './services/admin-challenges.service';
 import { AdminSkillsService } from './services/admin-skills.service';
 import { AdminAuditLogService } from './services/admin-audit-log.service';
+import { AdminSolutionsService } from './services/admin-solutions.service';
+import { AdminCommentsService } from './services/admin-comments.service';
 import {
   CreateChallengeDto,
   UpdateChallengeDto,
   CreateSkillDto,
   UpdateSkillDto,
   UpdateUserRoleDto,
+  DeleteAdminContentDto,
 } from './dto/admin.dto';
 
 function parsePagination(page?: string, limit?: string) {
@@ -53,6 +56,8 @@ export class AdminController {
     private readonly challengesService: AdminChallengesService,
     private readonly skillsService: AdminSkillsService,
     private readonly auditLogService: AdminAuditLogService,
+    private readonly solutionsService: AdminSolutionsService,
+    private readonly commentsService: AdminCommentsService,
   ) {}
 
   // ===== DASHBOARD =====
@@ -113,7 +118,11 @@ export class AdminController {
     @Req() req: any,
   ) {
     // Prevent admins from locking themselves out.
-    if (req.user?.id === id && body.role !== undefined && body.role !== 'ADMIN') {
+    if (
+      req.user?.id === id &&
+      body.role !== undefined &&
+      body.role !== 'ADMIN'
+    ) {
       throw new ForbiddenException('Cannot change your own role.');
     }
     if (req.user?.id === id && body.isActive === false) {
@@ -214,6 +223,84 @@ export class AdminController {
   @Delete('challenges/:id')
   async deleteChallenge(@Param('id') id: string, @Req() req: any) {
     return this.challengesService.deleteChallenge(id, getAuditContext(req));
+  }
+
+  // ===== SOLUTIONS =====
+
+  @Get('solutions')
+  async getSolutions(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('language') language?: string,
+    @Query('challengeId') challengeId?: string,
+    @Query('createdFrom') createdFrom?: string,
+    @Query('createdTo') createdTo?: string,
+  ) {
+    return this.solutionsService.getSolutions({
+      ...parsePagination(page, limit),
+      search: search || undefined,
+      language: language || undefined,
+      challengeId: challengeId || undefined,
+      createdFrom: createdFrom || undefined,
+      createdTo: createdTo || undefined,
+    });
+  }
+
+  @Get('solutions/:id')
+  async getSolutionDetail(@Param('id') id: string) {
+    return this.solutionsService.getSolutionDetail(id);
+  }
+
+  @Delete('solutions/:id')
+  async deleteSolution(
+    @Param('id') id: string,
+    @Body() body: DeleteAdminContentDto,
+    @Req() req: any,
+  ) {
+    return this.solutionsService.deleteSolution(
+      id,
+      body?.reason,
+      getAuditContext(req),
+    );
+  }
+
+  // ===== COMMENTS =====
+
+  @Get('comments')
+  async getComments(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('hasReplies') hasReplies?: string,
+    @Query('createdFrom') createdFrom?: string,
+    @Query('createdTo') createdTo?: string,
+  ) {
+    return this.commentsService.getComments({
+      ...parsePagination(page, limit),
+      search: search || undefined,
+      hasReplies: hasReplies || undefined,
+      createdFrom: createdFrom || undefined,
+      createdTo: createdTo || undefined,
+    });
+  }
+
+  @Get('comments/:id')
+  async getCommentDetail(@Param('id') id: string) {
+    return this.commentsService.getCommentDetail(id);
+  }
+
+  @Delete('comments/:id')
+  async deleteComment(
+    @Param('id') id: string,
+    @Body() body: DeleteAdminContentDto,
+    @Req() req: any,
+  ) {
+    return this.commentsService.deleteComment(
+      id,
+      body?.reason,
+      getAuditContext(req),
+    );
   }
 
   // ===== SKILLS =====

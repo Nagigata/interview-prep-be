@@ -49,22 +49,59 @@ export class SolutionsController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('solutions/me')
+  async getMySolutions(
+    @Req() req: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.solutionsService.getMySolutions(
+      req.user.id,
+      page ? Number(page) : 1,
+      limit ? Number(limit) : 10,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('solutions/me/comments')
+  async getMySolutionComments(
+    @Req() req: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.solutionsService.getMySolutionComments(
+      req.user.id,
+      page ? Number(page) : 1,
+      limit ? Number(limit) : 10,
+    );
+  }
+
   @Public()
   @Get('solutions/:solutionId')
-  async getSolutionById(@Req() req: any, @Param('solutionId') solutionId: string) {
+  async getSolutionById(
+    @Req() req: any,
+    @Param('solutionId') solutionId: string,
+  ) {
     return this.solutionsService.getSolutionById(solutionId, req.user?.id);
   }
 
   @UseGuards(JwtAuthGuard)
   @Delete('solutions/:solutionId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteSolution(@Req() req: any, @Param('solutionId') solutionId: string) {
+  async deleteSolution(
+    @Req() req: any,
+    @Param('solutionId') solutionId: string,
+  ) {
     return this.solutionsService.deleteSolution(req.user.id, solutionId);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('solutions/:solutionId/upvote')
-  async toggleSolutionUpvote(@Req() req: any, @Param('solutionId') solutionId: string) {
+  async toggleSolutionUpvote(
+    @Req() req: any,
+    @Param('solutionId') solutionId: string,
+  ) {
     return this.solutionsService.toggleSolutionUpvote(req.user.id, solutionId);
   }
 
@@ -97,7 +134,10 @@ export class SolutionsController {
 
   @UseGuards(JwtAuthGuard)
   @Post('solutions/:solutionId/comments/:commentId/upvote')
-  async toggleCommentUpvote(@Req() req: any, @Param('commentId') commentId: string) {
+  async toggleCommentUpvote(
+    @Req() req: any,
+    @Param('commentId') commentId: string,
+  ) {
     return this.solutionsService.toggleCommentUpvote(req.user.id, commentId);
   }
 }

@@ -225,6 +225,20 @@ export class AiService {
         Transcript:
         ${formattedTranscript}
 
+        SCORING RUBRIC (apply strictly to each category, 0-100 scale):
+        - 0-20: Candidate did NOT provide a real answer (silence, "I don't know", greeting only, 1-3 word non-answers, repetition of the question, off-topic ramble).
+        - 21-40: Attempted but largely incorrect, missed core concepts, or extremely vague.
+        - 41-60: Basic answer covering surface points; lacks depth, examples, or precision.
+        - 61-80: Solid answer with correct concepts and at least one concrete example.
+        - 81-100: Excellent answer with depth, accurate technical detail, and concrete examples or trade-offs.
+
+        CRITICAL SCORING RULES:
+        - totalScore MUST be the integer average of the 5 category scores.
+        - If a category has no relevant content in the transcript, that category score MUST be 0.
+        - DO NOT inflate scores out of politeness or to encourage the candidate.
+        - A transcript where the candidate only greets, says "yes/no", "I don't know", or fails to address questions MUST receive totalScore <= 20.
+        - In strengths and areasForImprovement, reference what the candidate actually said when possible. Do not fabricate praise.
+
         Please score the candidate from 0 to 100 in the following areas. Do not add categories other than the ones provided:
         - **Communication Skills**: Clarity, articulation, structured responses.
         - **Technical Knowledge**: Understanding of key concepts for the role.

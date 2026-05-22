@@ -142,6 +142,18 @@ export class UsersController {
     });
   }
 
+  @Get('me/profile-activity')
+  async getProfileActivity(
+    @CurrentUser('id') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.usersService.getProfileActivity(userId, {
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 10,
+    });
+  }
+
   @Get('me/recommended-skills')
   async getRecommendedSkills(
     @CurrentUser('id') userId: string,

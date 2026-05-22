@@ -14,13 +14,17 @@ export type AdminAuditAction =
   | 'DISABLE_CHALLENGE'
   | 'ENABLE_CHALLENGE'
   | 'ARCHIVE_INTERVIEW'
-  | 'RESTORE_INTERVIEW';
+  | 'RESTORE_INTERVIEW'
+  | 'DELETE_SOLUTION'
+  | 'DELETE_SOLUTION_COMMENT';
 
 export type AdminAuditEntityType =
   | 'USER'
   | 'SKILL'
   | 'CHALLENGE'
-  | 'INTERVIEW';
+  | 'INTERVIEW'
+  | 'SOLUTION'
+  | 'SOLUTION_COMMENT';
 
 export type AdminAuditContext = {
   adminId: string;

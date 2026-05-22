@@ -807,6 +807,103 @@ export class UsersService {
     };
   }
 
+  async getProfileActivity(
+    userId: string,
+    params: { page?: number; limit?: number },
+  ) {
+    const page = Math.max(params.page || 1, 1);
+    const limit = Math.min(Math.max(params.limit || 10, 1), 50);
+    const skip = (page - 1) * limit;
+    const takeForMerge = skip + limit;
+
+    const interviewWhere = {
+      userId,
+      status: { in: ['COMPLETED', 'TOO_SHORT', 'FAILED'] },
+    };
+
+    const [submissionTotal, interviewTotal, submissions, attempts] =
+      await Promise.all([
+        this.prisma.challengeSubmission.count({ where: { userId } }),
+        (this.prisma.interviewAttempt.count as any)({ where: interviewWhere }),
+        this.prisma.challengeSubmission.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          take: takeForMerge,
+          include: {
+            challenge: {
+              select: {
+                id: true,
+                title: true,
+                difficulty: true,
+                skill: { select: { slug: true } },
+              },
+            },
+          },
+        }),
+        (this.prisma.interviewAttempt.findMany as any)({
+          where: interviewWhere,
+          orderBy: { createdAt: 'desc' },
+          take: takeForMerge,
+          include: {
+            interview: {
+              select: { id: true, role: true, level: true, type: true },
+            },
+            feedback: { select: { totalScore: true } },
+          },
+        }),
+      ]);
+
+    const items = [
+      ...submissions.map((s: any) => this.mapProfileSubmissionActivity(s)),
+      ...attempts.map((a: any) => this.mapProfileInterviewActivity(a)),
+    ]
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )
+      .slice(skip, skip + limit);
+
+    const total = submissionTotal + interviewTotal;
+
+    return {
+      items,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
+  }
+
+  private mapProfileSubmissionActivity(submission: any) {
+    return {
+      activityType: 'CHALLENGE_SUBMISSION' as const,
+      id: submission.id,
+      createdAt: submission.createdAt,
+      challengeId: submission.challengeId,
+      challengeTitle: submission.challenge.title,
+      skillSlug: submission.challenge.skill.slug,
+      difficulty: submission.challenge.difficulty,
+      language: submission.language,
+      status: submission.status,
+      runtime: submission.runtime ?? null,
+      memory: submission.memory ?? null,
+    };
+  }
+
+  private mapProfileInterviewActivity(attempt: any) {
+    return {
+      activityType: 'INTERVIEW_ATTEMPT' as const,
+      id: attempt.id,
+      createdAt: attempt.createdAt,
+      interviewId: attempt.interviewId,
+      interviewRole: attempt.interview.role,
+      interviewLevel: attempt.interview.level,
+      interviewType: attempt.interview.type,
+      status: attempt.status,
+      score: attempt.feedback?.totalScore ?? null,
+    };
+  }
+
   private mergeRecentActivity(
     submissions: any[],
     interviews: any[],

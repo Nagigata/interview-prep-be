@@ -60,10 +60,11 @@ export class SolutionsService {
     limit = 20,
   ) {
     const skip = (page - 1) * limit;
+    const where = { challengeId, deletedAt: null };
 
     const [solutions, total] = await Promise.all([
       this.prisma.challengeSolution.findMany({
-        where: { challengeId },
+        where,
         orderBy: [{ upvotes: { _count: 'desc' } }, { createdAt: 'desc' }],
         skip,
         take: limit,
@@ -73,7 +74,7 @@ export class SolutionsService {
           upvotes: userId ? { where: { userId } } : false,
         },
       }),
-      this.prisma.challengeSolution.count({ where: { challengeId } }),
+      this.prisma.challengeSolution.count({ where }),
     ]);
 
     return {
@@ -93,8 +94,8 @@ export class SolutionsService {
   }
 
   async getSolutionById(solutionId: string, userId?: string) {
-    const solution = await this.prisma.challengeSolution.findUnique({
-      where: { id: solutionId },
+    const solution = await this.prisma.challengeSolution.findFirst({
+      where: { id: solutionId, deletedAt: null },
       include: {
         user: { select: { id: true, name: true, avatarUrl: true } },
         _count: { select: { upvotes: true, comments: true, views: true } },
@@ -161,8 +162,8 @@ export class SolutionsService {
   }
 
   async toggleSolutionUpvote(userId: string, solutionId: string) {
-    const solution = await this.prisma.challengeSolution.findUnique({
-      where: { id: solutionId },
+    const solution = await this.prisma.challengeSolution.findFirst({
+      where: { id: solutionId, deletedAt: null },
     });
     if (!solution) throw new NotFoundException('Solution not found');
 
@@ -186,8 +187,8 @@ export class SolutionsService {
     solutionId: string,
     dto: CreateCommentDto,
   ) {
-    const solution = await this.prisma.challengeSolution.findUnique({
-      where: { id: solutionId },
+    const solution = await this.prisma.challengeSolution.findFirst({
+      where: { id: solutionId, deletedAt: null },
       include: {
         user: { select: { id: true } },
         challenge: { select: { skill: { select: { slug: true } } } },
@@ -329,5 +330,104 @@ export class SolutionsService {
       data: { userId, commentId },
     });
     return { isUpvoted: true };
+  }
+
+  async getMySolutions(userId: string, page = 1, limit = 10) {
+    const skip = (page - 1) * limit;
+    const where = { userId, deletedAt: null };
+    const [solutions, total] = await Promise.all([
+      this.prisma.challengeSolution.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          title: true,
+          language: true,
+          createdAt: true,
+          challengeId: true,
+          _count: { select: { upvotes: true, views: true, comments: true } },
+          challenge: {
+            select: {
+              title: true,
+              skill: { select: { slug: true } },
+            },
+          },
+        },
+      }),
+      this.prisma.challengeSolution.count({ where }),
+    ]);
+
+    return {
+      items: solutions.map((s) => ({
+        id: s.id,
+        title: s.title,
+        language: s.language,
+        createdAt: s.createdAt,
+        challengeId: s.challengeId,
+        challengeTitle: s.challenge.title,
+        skillSlug: s.challenge.skill.slug,
+        upvoteCount: s._count.upvotes,
+        viewCount: s._count.views,
+        commentCount: s._count.comments,
+      })),
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
+  }
+
+  async getMySolutionComments(userId: string, page = 1, limit = 10) {
+    const normalizedPage = Math.max(page, 1);
+    const normalizedLimit = Math.min(Math.max(limit, 1), 50);
+    const skip = (normalizedPage - 1) * normalizedLimit;
+    const where = {
+      userId,
+      deletedAt: null,
+      solution: { userId: { not: userId }, deletedAt: null },
+    };
+
+    const [comments, total] = await Promise.all([
+      this.prisma.solutionComment.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: normalizedLimit,
+        select: {
+          id: true,
+          content: true,
+          createdAt: true,
+          solutionId: true,
+          solution: {
+            select: {
+              title: true,
+              challengeId: true,
+              challenge: {
+                select: { skill: { select: { slug: true } } },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.solutionComment.count({ where }),
+    ]);
+
+    return {
+      items: comments.map((c) => ({
+        id: c.id,
+        content: c.content,
+        createdAt: c.createdAt,
+        solutionId: c.solutionId,
+        solutionTitle: c.solution.title,
+        challengeId: c.solution.challengeId,
+        skillSlug: c.solution.challenge.skill.slug,
+      })),
+      page: normalizedPage,
+      limit: normalizedLimit,
+      total,
+      totalPages: Math.ceil(total / normalizedLimit) || 1,
+    };
   }
 }

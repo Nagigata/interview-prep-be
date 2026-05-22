@@ -6,6 +6,7 @@ import {
   IsObject,
   IsArray,
   IsBoolean,
+  MaxLength,
 } from 'class-validator';
 
 export enum DifficultyEnum {
@@ -171,4 +172,11 @@ export class UpdateUserRoleDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+}
+
+export class DeleteAdminContentDto {
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  reason?: string;
 }

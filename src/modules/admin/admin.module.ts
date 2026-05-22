@@ -6,6 +6,8 @@ import { AdminInterviewsService } from './services/admin-interviews.service';
 import { AdminChallengesService } from './services/admin-challenges.service';
 import { AdminSkillsService } from './services/admin-skills.service';
 import { AdminAuditLogService } from './services/admin-audit-log.service';
+import { AdminSolutionsService } from './services/admin-solutions.service';
+import { AdminCommentsService } from './services/admin-comments.service';
 
 @Module({
   controllers: [AdminController],
@@ -16,6 +18,8 @@ import { AdminAuditLogService } from './services/admin-audit-log.service';
     AdminChallengesService,
     AdminSkillsService,
     AdminAuditLogService,
+    AdminSolutionsService,
+    AdminCommentsService,
   ],
 })
 export class AdminModule {}

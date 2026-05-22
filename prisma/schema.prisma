@@ -328,16 +328,17 @@ model InterviewStar {
 }
 
 model ChallengeSolution {
-  id           String   @id @default(uuid())
-  challengeId  String   @map("challenge_id")
-  userId       String   @map("user_id")
-  submissionId String   @unique @map("submission_id")
+  id           String    @id @default(uuid())
+  challengeId  String    @map("challenge_id")
+  userId       String    @map("user_id")
+  submissionId String    @unique @map("submission_id")
   title        String
-  description  String?  @db.Text
+  description  String?   @db.Text
   language     String
-  code         String   @db.Text
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  code         String    @db.Text
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   challenge  Challenge           @relation(fields: [challengeId], references: [id], onDelete: Cascade)
   user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -348,6 +349,8 @@ model ChallengeSolution {
 
   @@index([challengeId, createdAt])
   @@index([userId])
+  @@index([deletedAt, createdAt])
+  @@index([language])
   @@map("challenge_solutions")
 }
 
