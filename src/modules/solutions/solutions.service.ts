@@ -223,7 +223,7 @@ export class SolutionsService {
     if (solution.user.id !== userId && !dto.parentId) {
       await this.notificationsService.create({
         userId: solution.user.id,
-        type: 'CHALLENGE_COMMENT_REPLY',
+        type: 'CHALLENGE_NEW_COMMENT',
         title: 'New comment on your solution',
         message: `Someone commented on your solution`,
         actionUrl: solutionUrl,

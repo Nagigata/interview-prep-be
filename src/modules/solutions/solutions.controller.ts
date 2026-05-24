@@ -77,6 +77,34 @@ export class SolutionsController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('solutions/user/:userId')
+  async getUserSolutions(
+    @Param('userId') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.solutionsService.getMySolutions(
+      userId,
+      page ? Number(page) : 1,
+      limit ? Number(limit) : 10,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('solutions/user/:userId/comments')
+  async getUserSolutionComments(
+    @Param('userId') userId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.solutionsService.getMySolutionComments(
+      userId,
+      page ? Number(page) : 1,
+      limit ? Number(limit) : 10,
+    );
+  }
+
   @Public()
   @Get('solutions/:solutionId')
   async getSolutionById(

@@ -1,12 +1,25 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Get, Req, Res } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+  Get,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { VerifyCodeDto } from './dto/verify-code.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { SetPasswordDto } from './dto/set-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { Public } from '../../common/decorators/public.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -48,6 +61,28 @@ export class AuthController {
     return this.authService.resetPassword(dto.resetToken, dto.newPassword);
   }
 
+  @Post('set-password')
+  @HttpCode(HttpStatus.OK)
+  async setPassword(
+    @CurrentUser('id') userId: string,
+    @Body() dto: SetPasswordDto,
+  ) {
+    return this.authService.setPassword(userId, dto.newPassword);
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  async changePassword(
+    @CurrentUser('id') userId: string,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(
+      userId,
+      dto.currentPassword,
+      dto.newPassword,
+    );
+  }
+
   // ===== OAUTH =====
 
   @Public()
@@ -78,4 +113,3 @@ export class AuthController {
     return res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
   }
 }
-

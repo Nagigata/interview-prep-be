@@ -3,7 +3,6 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
-  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -73,12 +72,9 @@ export class AuthService {
     }
 
     if (!user.password) {
-      throw new UnauthorizedException(
-        'Please sign in using your linked Google or GitHub account.',
-      );
+      throw new UnauthorizedException('Invalid email or password');
     }
 
-    // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
@@ -90,7 +86,7 @@ export class AuthService {
 
   async generateToken(user: any) {
     const payload = {
-      sub: user.id, // Subject matches JwtStrategy
+      sub: user.id,
       email: user.email,
       name: user.name,
       role: user.role || 'USER',
@@ -190,29 +186,39 @@ export class AuthService {
 
   async forgotPassword(email: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      throw new NotFoundException('No account found with this email.');
+
+    if (user) {
+      const CODE_TTL_MS = 5 * 60 * 1000;
+      const RESEND_COOLDOWN_MS = 60 * 1000;
+      const now = Date.now();
+
+      const lastIssuedAt = user.resetCodeExpiry
+        ? user.resetCodeExpiry.getTime() - CODE_TTL_MS
+        : null;
+      const inCooldown =
+        lastIssuedAt !== null && now - lastIssuedAt < RESEND_COOLDOWN_MS;
+
+      if (!inCooldown) {
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiry = new Date(now + CODE_TTL_MS);
+
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            resetCode: code,
+            resetCodeExpiry: expiry,
+            resetToken: null,
+          },
+        });
+
+        await this.mailService.sendResetCode(email, code);
+      }
     }
 
-    // Generate 6-digit OTP
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        resetCode: code,
-        resetCodeExpiry: expiry,
-        resetToken: null,
-      },
-    });
-
-    const sent = await this.mailService.sendResetCode(email, code);
-    if (!sent) {
-      throw new BadRequestException('Failed to send email. Please try again.');
-    }
-
-    return { message: 'Verification code sent to your email.' };
+    return {
+      message:
+        'If an account exists for this email, a verification code has been sent.',
+    };
   }
 
   async verifyResetCode(email: string, code: string) {
@@ -246,6 +252,57 @@ export class AuthService {
     return { resetToken };
   }
 
+  async setPassword(userId: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (user.password) {
+      throw new BadRequestException(
+        'Password is already set. Use change password instead.',
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+
+    return { success: true };
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (!user.password) {
+      throw new BadRequestException(
+        'No password is set on this account. Use set password instead.',
+      );
+    }
+
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) {
+      throw new UnauthorizedException('Current password is incorrect.');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+
+    return { success: true };
+  }
+
   async resetPassword(resetToken: string, newPassword: string) {
     const user = await this.prisma.user.findFirst({
       where: { resetToken },
@@ -261,7 +318,9 @@ export class AuthService {
         where: { id: user.id },
         data: { resetToken: null, resetTokenExpiry: null },
       });
-      throw new BadRequestException('Reset token has expired. Please request a new one.');
+      throw new BadRequestException(
+        'Reset token has expired. Please request a new one.',
+      );
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);

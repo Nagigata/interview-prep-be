@@ -2,8 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
+  Param,
   Patch,
   Query,
   UploadedFile,
@@ -16,6 +18,7 @@ import { mkdirSync } from 'fs';
 import { UsersService } from './users.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 
 const avatarUploadPath = join(process.cwd(), 'uploads', 'avatars');
 
@@ -47,7 +50,7 @@ export class UsersController {
     @CurrentUser() user: { id: string },
     @Headers('x-timezone') timezone?: string,
   ) {
-    return this.usersService.findById(user.id, timezone);
+    return this.usersService.getProfileForUser(user.id, user.id, timezone);
   }
 
   @Patch('me')
@@ -147,10 +150,12 @@ export class UsersController {
     @CurrentUser('id') userId: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('type') type?: string,
   ) {
     return this.usersService.getProfileActivity(userId, {
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 10,
+      type: type === 'INTERVIEW' ? 'INTERVIEW' : 'CHALLENGE',
     });
   }
 
@@ -162,6 +167,46 @@ export class UsersController {
     return this.usersService.getRecommendedSkills(
       userId,
       limit ? parseInt(limit, 10) : 3,
+    );
+  }
+
+  @Delete('me')
+  async deleteAccount(
+    @CurrentUser('id') userId: string,
+    @Body() dto: DeleteAccountDto,
+  ) {
+    return this.usersService.deleteAccount(userId, dto);
+  }
+
+  @Get(':id')
+  async getUserProfileById(
+    @Param('id') targetUserId: string,
+    @CurrentUser('id') requesterId: string,
+    @Headers('x-timezone') timezone?: string,
+  ) {
+    return this.usersService.getProfileForUser(
+      targetUserId,
+      requesterId,
+      timezone,
+    );
+  }
+
+  @Get(':id/profile-activity')
+  async getProfileActivityById(
+    @Param('id') targetUserId: string,
+    @CurrentUser('id') requesterId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('type') type?: string,
+  ) {
+    return this.usersService.getProfileActivityForUser(
+      targetUserId,
+      requesterId,
+      {
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 10,
+        type: type === 'INTERVIEW' ? 'INTERVIEW' : 'CHALLENGE',
+      },
     );
   }
 }

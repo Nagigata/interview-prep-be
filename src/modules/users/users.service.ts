@@ -1,5 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 
 type PaginationParams = {
   page?: number;
@@ -47,7 +56,17 @@ export class UsersService {
           isActive: true,
           avatarUrl: true,
           createdAt: true,
-        },
+          provider: true,
+          gender: true,
+          birthday: true,
+          location: true,
+          readme: true,
+          notifyInterviewActivity: true,
+          notifyComments: true,
+          notifySound: true,
+          deletedAt: true,
+          password: true,
+        } as any,
       }),
       this.prisma.challengeStar.count({
         where: { userId: id },
@@ -230,8 +249,10 @@ export class UsersService {
     );
     const streakInfo = this.calculateStreaks(activityCalendar);
 
+    const { password: _password, ...userWithoutPassword } = (user as any) ?? {};
     return {
-      ...user,
+      ...userWithoutPassword,
+      hasPassword: Boolean((user as any)?.password),
       stats: {
         totalStarredChallenges: starredCount,
         totalSolvedChallenges: solvedChallengeCount,
@@ -278,11 +299,44 @@ export class UsersService {
     });
   }
 
-  async updateProfile(userId: string, data: { name?: string }, avatar?: any) {
-    const updateData: { name?: string; avatarUrl?: string } = {};
+  async updateProfile(userId: string, data: UpdateProfileDto, avatar?: any) {
+    const updateData: Record<string, any> = {};
 
     if (data.name?.trim()) {
       updateData.name = data.name.trim();
+    }
+
+    if (data.gender !== undefined) {
+      updateData.gender = data.gender || null;
+    }
+
+    if (data.birthday !== undefined) {
+      const birthdayDate = data.birthday instanceof Date ? data.birthday : null;
+      if (birthdayDate && birthdayDate.getTime() > Date.now()) {
+        throw new BadRequestException('Birthday must be in the past.');
+      }
+      updateData.birthday = birthdayDate;
+    }
+
+    if (data.location !== undefined) {
+      const trimmed = (data.location || '').trim();
+      updateData.location = trimmed.length > 0 ? trimmed : null;
+    }
+
+    if (data.readme !== undefined) {
+      updateData.readme = data.readme ?? null;
+    }
+
+    if (data.notifyInterviewActivity !== undefined) {
+      updateData.notifyInterviewActivity = data.notifyInterviewActivity;
+    }
+
+    if (data.notifyComments !== undefined) {
+      updateData.notifyComments = data.notifyComments;
+    }
+
+    if (data.notifySound !== undefined) {
+      updateData.notifySound = data.notifySound;
     }
 
     if (avatar) {
@@ -299,6 +353,104 @@ export class UsersService {
     });
 
     return this.findById(userId);
+  }
+
+  async deleteAccount(userId: string, dto: DeleteAccountDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if ((user as any).deletedAt) {
+      throw new BadRequestException('Account already deleted.');
+    }
+
+    if (!user.password) {
+      throw new BadRequestException(
+        'You must set a password before deleting your account. Visit Settings → Account to set one.',
+      );
+    }
+
+    if (!dto.password) {
+      throw new BadRequestException(
+        'Password is required to confirm account deletion.',
+      );
+    }
+
+    const passwordValid = await bcrypt.compare(dto.password, user.password);
+    if (!passwordValid) {
+      throw new UnauthorizedException('Invalid password.');
+    }
+
+    const anonymizedEmail = `deleted-${userId}@deleted.local`;
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        isActive: false,
+        email: anonymizedEmail,
+        name: 'Deleted User',
+        avatarUrl: null,
+        password: null,
+        provider: null,
+        providerId: null,
+        gender: null,
+        birthday: null,
+        location: null,
+        readme: null,
+        deletedAt: new Date(),
+      } as any,
+    });
+
+    return { success: true };
+  }
+
+  async getProfileForUser(
+    targetUserId: string,
+    requesterId: string,
+    timezone?: string,
+  ) {
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, deletedAt: true } as any,
+    });
+
+    if (!target || (target as any).deletedAt) {
+      throw new NotFoundException('User not found');
+    }
+
+    const [profile, solutionCount, discussCount, interviewSummary] =
+      await Promise.all([
+        this.findById(targetUserId, timezone),
+        this.prisma.challengeSolution.count({
+          where: { userId: targetUserId, deletedAt: null } as any,
+        }),
+        this.prisma.solutionComment.count({
+          where: { userId: targetUserId } as any,
+        }),
+        this.computeInterviewSummary(targetUserId),
+      ]);
+
+    const isOwn = requesterId === targetUserId;
+    const baseProfile = {
+      ...profile,
+      solutionCount,
+      discussCount,
+      interviewSummary,
+    };
+
+    if (isOwn) {
+      return baseProfile;
+    }
+
+    const { email: _email, ...publicProfile } = baseProfile as any;
+    return {
+      ...publicProfile,
+      hasPassword: undefined,
+      notifyInterviewActivity: undefined,
+      notifyComments: undefined,
+      notifySound: undefined,
+    };
   }
 
   async getStarredChallenges(userId: string, params: PaginationParams) {
@@ -809,26 +961,25 @@ export class UsersService {
 
   async getProfileActivity(
     userId: string,
-    params: { page?: number; limit?: number },
+    params: {
+      page?: number;
+      limit?: number;
+      type?: 'CHALLENGE' | 'INTERVIEW';
+    },
   ) {
+    const type = params.type ?? 'CHALLENGE';
     const page = Math.max(params.page || 1, 1);
     const limit = Math.min(Math.max(params.limit || 10, 1), 50);
     const skip = (page - 1) * limit;
-    const takeForMerge = skip + limit;
 
-    const interviewWhere = {
-      userId,
-      status: { in: ['COMPLETED', 'TOO_SHORT', 'FAILED'] },
-    };
-
-    const [submissionTotal, interviewTotal, submissions, attempts] =
-      await Promise.all([
+    if (type === 'CHALLENGE') {
+      const [total, submissions] = await Promise.all([
         this.prisma.challengeSubmission.count({ where: { userId } }),
-        (this.prisma.interviewAttempt.count as any)({ where: interviewWhere }),
         this.prisma.challengeSubmission.findMany({
           where: { userId },
           orderBy: { createdAt: 'desc' },
-          take: takeForMerge,
+          skip,
+          take: limit,
           include: {
             challenge: {
               select: {
@@ -840,33 +991,42 @@ export class UsersService {
             },
           },
         }),
-        (this.prisma.interviewAttempt.findMany as any)({
-          where: interviewWhere,
-          orderBy: { createdAt: 'desc' },
-          take: takeForMerge,
-          include: {
-            interview: {
-              select: { id: true, role: true, level: true, type: true },
-            },
-            feedback: { select: { totalScore: true } },
-          },
-        }),
       ]);
 
-    const items = [
-      ...submissions.map((s: any) => this.mapProfileSubmissionActivity(s)),
-      ...attempts.map((a: any) => this.mapProfileInterviewActivity(a)),
-    ]
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      )
-      .slice(skip, skip + limit);
+      return {
+        items: submissions.map((s: any) =>
+          this.mapProfileSubmissionActivity(s),
+        ),
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      };
+    }
 
-    const total = submissionTotal + interviewTotal;
+    const interviewWhere = {
+      userId,
+      status: { in: ['COMPLETED', 'TOO_SHORT', 'FAILED'] },
+    };
+
+    const [total, attempts] = await Promise.all([
+      (this.prisma.interviewAttempt.count as any)({ where: interviewWhere }),
+      (this.prisma.interviewAttempt.findMany as any)({
+        where: interviewWhere,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          interview: {
+            select: { id: true, role: true, level: true, type: true },
+          },
+          feedback: { select: { totalScore: true } },
+        },
+      }),
+    ]);
 
     return {
-      items,
+      items: attempts.map((a: any) => this.mapProfileInterviewActivity(a)),
       page,
       limit,
       total,
@@ -1024,5 +1184,76 @@ export class UsersService {
     }
 
     return 'all';
+  }
+
+  private async computeInterviewSummary(userId: string) {
+    const [created, completedAttempts, attentionAttempts, latest] =
+      await Promise.all([
+        this.prisma.interview.count({ where: { userId } }),
+        (this.prisma.interviewAttempt.count as any)({
+          where: {
+            userId,
+            status: 'COMPLETED',
+            feedback: { isNot: null },
+          },
+        }) as Promise<number>,
+        (this.prisma.interviewAttempt.count as any)({
+          where: {
+            userId,
+            status: { in: ['TOO_SHORT', 'FAILED'] },
+          },
+        }) as Promise<number>,
+        (this.prisma.interviewAttempt.findFirst as any)({
+          where: {
+            userId,
+            completedAt: { not: null },
+          },
+          orderBy: { completedAt: 'desc' },
+          select: {
+            status: true,
+            completedAt: true,
+            interview: {
+              select: { role: true, level: true },
+            },
+          },
+        }) as Promise<any>,
+      ]);
+
+    return {
+      created,
+      completedAttempts,
+      attentionAttempts,
+      latestRole: latest?.interview?.role ?? null,
+      latestStatus: latest?.status ?? null,
+      latestDate: latest?.completedAt ?? null,
+    };
+  }
+
+  async getProfileActivityForUser(
+    targetUserId: string,
+    requesterId: string,
+    params: {
+      page?: number;
+      limit?: number;
+      type?: 'CHALLENGE' | 'INTERVIEW';
+    },
+  ) {
+    const type = params.type ?? 'CHALLENGE';
+    if (type === 'INTERVIEW' && requesterId !== targetUserId) {
+      throw new ForbiddenException(
+        'Interview activity is private to its owner',
+      );
+    }
+
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, deletedAt: true } as any,
+    });
+
+    if (!target || (target as any).deletedAt) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.getProfileActivity(targetUserId, params);
   }
 }

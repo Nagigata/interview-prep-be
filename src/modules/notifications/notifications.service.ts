@@ -9,9 +9,32 @@ export type NotificationKind =
   | 'FEEDBACK_GENERATION_PROCESSING'
   | 'FEEDBACK_GENERATION_COMPLETED'
   | 'FEEDBACK_GENERATION_FAILED'
+  | 'CHALLENGE_NEW_COMMENT'
   | 'CHALLENGE_COMMENT_REPLY'
   | 'CHALLENGE_COMMENT_MENTION'
   | 'SYSTEM';
+
+export type NotificationPreferences = {
+  notifyInterviewActivity: boolean;
+  notifyComments: boolean;
+};
+
+export function checkTypePreference(
+  prefs: NotificationPreferences,
+  type: NotificationKind,
+): boolean {
+  if (type === 'SYSTEM') return true;
+  if (
+    type.startsWith('INTERVIEW_GENERATION') ||
+    type.startsWith('FEEDBACK_GENERATION')
+  ) {
+    return prefs.notifyInterviewActivity;
+  }
+  if (type.startsWith('CHALLENGE_')) {
+    return prefs.notifyComments;
+  }
+  return true;
+}
 
 type CreateNotificationInput = {
   userId: string;
@@ -48,6 +71,11 @@ export class NotificationsService {
   ) {}
 
   async create(input: CreateNotificationInput) {
+    const allowed = await this.shouldNotify(input.userId, input.type);
+    if (!allowed) {
+      return null;
+    }
+
     const notification = await this.notifications.create({
       data: {
         userId: input.userId,
@@ -63,12 +91,39 @@ export class NotificationsService {
     return notification;
   }
 
-  emitRealtime(userId: string, notification: RealtimeNotificationInput) {
+  async emitRealtime(userId: string, notification: RealtimeNotificationInput) {
+    const allowed = await this.shouldNotify(userId, notification.type);
+    if (!allowed) {
+      return;
+    }
+
     this.gateway.emitNotificationCreated(userId, {
       ...notification,
       readAt: null,
       createdAt: new Date().toISOString(),
     });
+  }
+
+  private async shouldNotify(
+    userId: string,
+    type: NotificationKind,
+  ): Promise<boolean> {
+    if (type === 'SYSTEM') return true;
+    const user = (await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        notifyInterviewActivity: true,
+        notifyComments: true,
+      } as any,
+    })) as any;
+    if (!user) return false;
+    return checkTypePreference(
+      {
+        notifyInterviewActivity: Boolean(user.notifyInterviewActivity),
+        notifyComments: Boolean(user.notifyComments),
+      },
+      type,
+    );
   }
 
   async findMine(userId: string, query: FindNotificationsQuery = {}) {

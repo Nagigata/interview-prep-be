@@ -12,11 +12,19 @@ enum Role {
   ADMIN
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
 enum NotificationType {
   INTERVIEW_GENERATION_COMPLETED
   INTERVIEW_GENERATION_FAILED
   FEEDBACK_GENERATION_COMPLETED
   FEEDBACK_GENERATION_FAILED
+  CHALLENGE_NEW_COMMENT
   CHALLENGE_COMMENT_REPLY
   CHALLENGE_COMMENT_MENTION
   SYSTEM
@@ -36,8 +44,20 @@ model User {
   resetCodeExpiry  DateTime? @map("reset_code_expiry") @db.Timestamptz(3)
   resetToken       String?   @map("reset_token")
   resetTokenExpiry DateTime? @map("reset_token_expiry") @db.Timestamptz(3)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  gender   Gender?
+  birthday DateTime? @db.Timestamptz(3)
+  location String?   @db.VarChar(100)
+  readme   String?   @db.Text
+
+  notifyInterviewActivity Boolean @default(true) @map("notify_interview_activity")
+  notifyComments          Boolean @default(true) @map("notify_comments")
+  notifySound             Boolean @default(true) @map("notify_sound")
+
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   interviews              Interview[]
   interviewAttempts       InterviewAttempt[]
