@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -57,6 +58,8 @@ export class UsersService {
           avatarUrl: true,
           createdAt: true,
           provider: true,
+          googleId: true,
+          githubId: true,
           gender: true,
           birthday: true,
           location: true,
@@ -249,10 +252,19 @@ export class UsersService {
     );
     const streakInfo = this.calculateStreaks(activityCalendar);
 
-    const { password: _password, ...userWithoutPassword } = (user as any) ?? {};
+    const {
+      password: _password,
+      googleId: _googleId,
+      githubId: _githubId,
+      ...userWithoutPassword
+    } = (user as any) ?? {};
+    const linkedProviders: ('GOOGLE' | 'GITHUB')[] = [];
+    if ((user as any)?.googleId) linkedProviders.push('GOOGLE');
+    if ((user as any)?.githubId) linkedProviders.push('GITHUB');
     return {
       ...userWithoutPassword,
       hasPassword: Boolean((user as any)?.password),
+      linkedProviders,
       stats: {
         totalStarredChallenges: starredCount,
         totalSolvedChallenges: solvedChallengeCount,
@@ -405,6 +417,83 @@ export class UsersService {
     return { success: true };
   }
 
+  async linkOAuthProvider(
+    userId: string,
+    provider: 'GOOGLE' | 'GITHUB',
+    providerId: string,
+    avatarUrl?: string | null,
+  ) {
+    const column = provider === 'GOOGLE' ? 'googleId' : 'githubId';
+
+    // Check if this OAuth account is already linked to a different user
+    const existing = await (this.prisma.user.findFirst as any)({
+      where: { [column]: providerId },
+      select: { id: true },
+    });
+    if (existing && existing.id !== userId) {
+      throw new ConflictException(
+        `This ${provider === 'GOOGLE' ? 'Google' : 'GitHub'} account is already linked to another user.`,
+      );
+    }
+
+    const updateData: Record<string, any> = { [column]: providerId };
+    // Adopt avatar if user doesn't have one yet
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true } as any,
+    });
+    if (avatarUrl && !(user as any)?.avatarUrl) {
+      updateData.avatarUrl = avatarUrl;
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+    });
+
+    return { success: true, provider };
+  }
+
+  async unlinkOAuthProvider(userId: string, provider: 'GOOGLE' | 'GITHUB') {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        password: true,
+        googleId: true,
+        githubId: true,
+      } as any,
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const column = provider === 'GOOGLE' ? 'googleId' : 'githubId';
+    const otherColumn = provider === 'GOOGLE' ? 'githubId' : 'googleId';
+
+    if (!(user as any)[column]) {
+      throw new BadRequestException(
+        `${provider === 'GOOGLE' ? 'Google' : 'GitHub'} is not linked to this account.`,
+      );
+    }
+
+    // Guardrail: must have a password OR another linked provider to avoid lockout
+    const hasPassword = Boolean((user as any).password);
+    const hasOtherProvider = Boolean((user as any)[otherColumn]);
+    if (!hasPassword && !hasOtherProvider) {
+      throw new BadRequestException(
+        'You must set a password or link another provider before unlinking this one. Otherwise you would be locked out of your account.',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { [column]: null } as any,
+    });
+
+    return { success: true, provider };
+  }
+
   async getProfileForUser(
     targetUserId: string,
     requesterId: string,
@@ -447,6 +536,7 @@ export class UsersService {
     return {
       ...publicProfile,
       hasPassword: undefined,
+      linkedProviders: undefined,
       notifyInterviewActivity: undefined,
       notifyComments: undefined,
       notifySound: undefined,
@@ -1187,7 +1277,7 @@ export class UsersService {
   }
 
   private async computeInterviewSummary(userId: string) {
-    const [created, completedAttempts, attentionAttempts, latest] =
+    const [created, completedAttempts, scoreAggregate, latest] =
       await Promise.all([
         this.prisma.interview.count({ where: { userId } }),
         (this.prisma.interviewAttempt.count as any)({
@@ -1197,12 +1287,14 @@ export class UsersService {
             feedback: { isNot: null },
           },
         }) as Promise<number>,
-        (this.prisma.interviewAttempt.count as any)({
-          where: {
-            userId,
-            status: { in: ['TOO_SHORT', 'FAILED'] },
-          },
-        }) as Promise<number>,
+        (this.prisma.feedback.aggregate as any)({
+          where: { userId },
+          _avg: { totalScore: true },
+          _count: { _all: true },
+        }) as Promise<{
+          _avg: { totalScore: number | null };
+          _count: { _all: number };
+        }>,
         (this.prisma.interviewAttempt.findFirst as any)({
           where: {
             userId,
@@ -1219,10 +1311,15 @@ export class UsersService {
         }) as Promise<any>,
       ]);
 
+    const rawAverage = scoreAggregate?._avg?.totalScore ?? null;
+    const averageScore = rawAverage === null ? null : Math.round(rawAverage);
+    const scoredFeedbacks = scoreAggregate?._count?._all ?? 0;
+
     return {
       created,
       completedAttempts,
-      attentionAttempts,
+      averageScore,
+      scoredFeedbacks,
       latestRole: latest?.interview?.role ?? null,
       latestStatus: latest?.status ?? null,
       latestDate: latest?.completedAt ?? null,

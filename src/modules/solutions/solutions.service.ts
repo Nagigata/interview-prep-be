@@ -58,23 +58,50 @@ export class SolutionsService {
     userId?: string,
     page = 1,
     limit = 20,
+    filters: {
+      language?: string;
+      sort?: 'newest' | 'top-views' | 'top-votes';
+    } = {},
   ) {
     const skip = (page - 1) * limit;
-    const where = { challengeId, deletedAt: null };
+    const language = filters.language?.trim();
+    const sort = filters.sort ?? 'top-votes';
 
-    const [solutions, total] = await Promise.all([
+    const where: any = { challengeId, deletedAt: null };
+    if (language) where.language = language;
+
+    const orderBy: any =
+      sort === 'newest'
+        ? [{ createdAt: 'desc' }]
+        : sort === 'top-views'
+          ? [{ views: { _count: 'desc' } }, { createdAt: 'desc' }]
+          : [{ upvotes: { _count: 'desc' } }, { createdAt: 'desc' }];
+
+    const [solutions, total, languageGroups] = await Promise.all([
       this.prisma.challengeSolution.findMany({
         where,
-        orderBy: [{ upvotes: { _count: 'desc' } }, { createdAt: 'desc' }],
+        orderBy,
         skip,
         take: limit,
         include: {
           user: { select: { id: true, name: true, avatarUrl: true } },
-          _count: { select: { upvotes: true, comments: true, views: true } },
+          _count: {
+            select: {
+              upvotes: true,
+              comments: { where: { deletedAt: null } },
+              views: true,
+            },
+          },
           upvotes: userId ? { where: { userId } } : false,
         },
       }),
       this.prisma.challengeSolution.count({ where }),
+      this.prisma.challengeSolution.groupBy({
+        by: ['language'],
+        where: { challengeId, deletedAt: null },
+        _count: { language: true },
+        orderBy: { language: 'asc' },
+      }),
     ]);
 
     return {
@@ -90,6 +117,7 @@ export class SolutionsService {
       total,
       page,
       limit,
+      availableLanguages: languageGroups.map((g) => g.language),
     };
   }
 
@@ -98,7 +126,13 @@ export class SolutionsService {
       where: { id: solutionId, deletedAt: null },
       include: {
         user: { select: { id: true, name: true, avatarUrl: true } },
-        _count: { select: { upvotes: true, comments: true, views: true } },
+        _count: {
+          select: {
+            upvotes: true,
+            comments: { where: { deletedAt: null } },
+            views: true,
+          },
+        },
         upvotes: userId ? { where: { userId } } : false,
         comments: {
           where: { parentId: null },

@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -12,6 +13,14 @@ import { MailService } from '../../shared/mail/mail.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import * as crypto from 'crypto';
+
+type OAuthProfile = {
+  email: string;
+  name: string;
+  providerId: string;
+  provider: 'GOOGLE' | 'GITHUB';
+  avatarUrl?: string;
+};
 
 @Injectable()
 export class AuthService {
@@ -130,16 +139,20 @@ export class AuthService {
     };
   }
 
-  async validateOAuthLogin(profile: {
-    email: string;
-    name: string;
-    providerId: string;
-    provider: string;
-    avatarUrl?: string;
-  }) {
-    let user = await this.prisma.user.findUnique({
-      where: { email: profile.email },
+  async validateOAuthLogin(profile: OAuthProfile) {
+    const linkColumn = profile.provider === 'GOOGLE' ? 'googleId' : 'githubId';
+
+    // 1. Try to find by linked provider ID first (most precise)
+    let user: any = await (this.prisma.user.findFirst as any)({
+      where: { [linkColumn]: profile.providerId },
     });
+
+    // 2. Fall back to email lookup
+    if (!user) {
+      user = await this.prisma.user.findUnique({
+        where: { email: profile.email },
+      });
+    }
 
     if (!user) {
       user = await this.prisma.user.create({
@@ -148,16 +161,21 @@ export class AuthService {
           name: profile.name,
           provider: profile.provider,
           providerId: profile.providerId,
+          [linkColumn]: profile.providerId,
           avatarUrl: profile.avatarUrl,
-        },
+        } as any,
       });
     } else {
-      // Update provider info and avatar if needed
       const updateData: Record<string, any> = {};
 
       if (!user.provider || user.provider === 'LOCAL') {
         updateData.provider = profile.provider;
         updateData.providerId = profile.providerId;
+      }
+
+      // Populate the per-provider link column on first OAuth login through this provider
+      if (!(user as any)[linkColumn]) {
+        updateData[linkColumn] = profile.providerId;
       }
 
       if (profile.avatarUrl && !user.avatarUrl) {
@@ -178,8 +196,56 @@ export class AuthService {
       );
     }
 
-    // Reuse the generic token generator
     return this.generateToken(user);
+  }
+
+  async handleOAuthLink(userId: string, profile: OAuthProfile) {
+    const linkColumn = profile.provider === 'GOOGLE' ? 'googleId' : 'githubId';
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    // Already linked to this same provider on this user? Idempotent success
+    if ((user as any)[linkColumn] === profile.providerId) {
+      return { success: true, provider: profile.provider, userId };
+    }
+
+    // Conflict: this OAuth account is already on another user
+    const conflict: any = await (this.prisma.user.findFirst as any)({
+      where: { [linkColumn]: profile.providerId, NOT: { id: userId } },
+      select: { id: true },
+    });
+    if (conflict) {
+      throw new ConflictException(
+        `This ${profile.provider === 'GOOGLE' ? 'Google' : 'GitHub'} account is already linked to another user.`,
+      );
+    }
+
+    // Conflict: user already linked a DIFFERENT account of this provider
+    if (
+      (user as any)[linkColumn] &&
+      (user as any)[linkColumn] !== profile.providerId
+    ) {
+      throw new ConflictException(
+        `You already have a different ${profile.provider === 'GOOGLE' ? 'Google' : 'GitHub'} account linked. Unlink it first.`,
+      );
+    }
+
+    const updateData: Record<string, any> = {
+      [linkColumn]: profile.providerId,
+    };
+    if (profile.avatarUrl && !user.avatarUrl) {
+      updateData.avatarUrl = profile.avatarUrl;
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: updateData as any,
+    });
+
+    return { success: true, provider: profile.provider, userId };
   }
 
   // ===== FORGOT PASSWORD FLOW =====

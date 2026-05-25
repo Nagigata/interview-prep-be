@@ -8,16 +8,21 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { GithubStrategy } from './strategies/github.strategy';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
+    UsersModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET') as string,
         signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRATION', '7d') as `${number}${'s' | 'm' | 'h' | 'd' | 'w' | 'y'}`,
+          expiresIn: configService.get<string>(
+            'JWT_EXPIRATION',
+            '7d',
+          ) as `${number}${'s' | 'm' | 'h' | 'd' | 'w' | 'y'}`,
         },
       }),
       inject: [ConfigService],

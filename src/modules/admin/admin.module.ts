@@ -8,8 +8,11 @@ import { AdminSkillsService } from './services/admin-skills.service';
 import { AdminAuditLogService } from './services/admin-audit-log.service';
 import { AdminSolutionsService } from './services/admin-solutions.service';
 import { AdminCommentsService } from './services/admin-comments.service';
+import { AdminNotificationsService } from './services/admin-notifications.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
+  imports: [NotificationsModule],
   controllers: [AdminController],
   providers: [
     AdminDashboardService,
@@ -20,6 +23,7 @@ import { AdminCommentsService } from './services/admin-comments.service';
     AdminAuditLogService,
     AdminSolutionsService,
     AdminCommentsService,
+    AdminNotificationsService,
   ],
 })
 export class AdminModule {}

@@ -180,3 +180,46 @@ export class DeleteAdminContentDto {
   @MaxLength(500)
   reason?: string;
 }
+
+export class SendUserSystemNotificationDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  title: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  message: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  actionUrl?: string;
+}
+
+export enum BroadcastAudience {
+  ALL = 'ALL',
+  ADMIN = 'ADMIN',
+  USER = 'USER',
+}
+
+export class BroadcastSystemNotificationDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  title: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  message: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  actionUrl?: string;
+
+  @IsEnum(BroadcastAudience)
+  audience: BroadcastAudience;
+}

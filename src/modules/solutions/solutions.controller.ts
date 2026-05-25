@@ -40,12 +40,22 @@ export class SolutionsController {
     @Param('challengeId') challengeId: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('language') language?: string,
+    @Query('sort') sort?: string,
   ) {
+    const allowedSorts = ['newest', 'top-views', 'top-votes'] as const;
+    type SortKey = (typeof allowedSorts)[number];
+    const normalizedSort: SortKey | undefined =
+      sort && (allowedSorts as readonly string[]).includes(sort)
+        ? (sort as SortKey)
+        : undefined;
+
     return this.solutionsService.getSolutions(
       challengeId,
       req.user?.id,
       page ? Number(page) : 1,
       limit ? Number(limit) : 20,
+      { language, sort: normalizedSort },
     );
   }
 

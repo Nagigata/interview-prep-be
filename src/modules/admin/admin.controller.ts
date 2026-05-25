@@ -20,6 +20,7 @@ import { AdminSkillsService } from './services/admin-skills.service';
 import { AdminAuditLogService } from './services/admin-audit-log.service';
 import { AdminSolutionsService } from './services/admin-solutions.service';
 import { AdminCommentsService } from './services/admin-comments.service';
+import { AdminNotificationsService } from './services/admin-notifications.service';
 import {
   CreateChallengeDto,
   UpdateChallengeDto,
@@ -27,6 +28,8 @@ import {
   UpdateSkillDto,
   UpdateUserRoleDto,
   DeleteAdminContentDto,
+  SendUserSystemNotificationDto,
+  BroadcastSystemNotificationDto,
 } from './dto/admin.dto';
 
 function parsePagination(page?: string, limit?: string) {
@@ -58,6 +61,7 @@ export class AdminController {
     private readonly auditLogService: AdminAuditLogService,
     private readonly solutionsService: AdminSolutionsService,
     private readonly commentsService: AdminCommentsService,
+    private readonly notificationsService: AdminNotificationsService,
   ) {}
 
   // ===== DASHBOARD =====
@@ -129,6 +133,23 @@ export class AdminController {
       throw new ForbiddenException('Cannot deactivate your own account.');
     }
     return this.usersService.updateUser(id, body, getAuditContext(req));
+  }
+
+  @Post('users/:id/notify')
+  async sendUserNotification(
+    @Param('id') id: string,
+    @Body() body: SendUserSystemNotificationDto,
+    @Req() req: any,
+  ) {
+    return this.notificationsService.sendToUser(id, body, getAuditContext(req));
+  }
+
+  @Post('broadcast')
+  async broadcastNotification(
+    @Body() body: BroadcastSystemNotificationDto,
+    @Req() req: any,
+  ) {
+    return this.notificationsService.broadcastToAll(body, getAuditContext(req));
   }
 
   // ===== INTERVIEWS =====

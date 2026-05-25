@@ -39,6 +39,8 @@ model User {
   isActive         Boolean   @default(true) @map("is_active")
   provider         String?   @default("LOCAL")
   providerId       String?   @map("provider_id")
+  googleId         String?   @unique @map("google_id")
+  githubId         String?   @unique @map("github_id")
   avatarUrl        String?   @map("avatar_url")
   resetCode        String?   @map("reset_code")
   resetCodeExpiry  DateTime? @map("reset_code_expiry") @db.Timestamptz(3)

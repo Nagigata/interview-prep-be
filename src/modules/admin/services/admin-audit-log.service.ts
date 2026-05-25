@@ -16,7 +16,9 @@ export type AdminAuditAction =
   | 'ARCHIVE_INTERVIEW'
   | 'RESTORE_INTERVIEW'
   | 'DELETE_SOLUTION'
-  | 'DELETE_SOLUTION_COMMENT';
+  | 'DELETE_SOLUTION_COMMENT'
+  | 'SEND_USER_NOTIFICATION'
+  | 'SEND_BROADCAST_NOTIFICATION';
 
 export type AdminAuditEntityType =
   | 'USER'
@@ -24,7 +26,8 @@ export type AdminAuditEntityType =
   | 'CHALLENGE'
   | 'INTERVIEW'
   | 'SOLUTION'
-  | 'SOLUTION_COMMENT';
+  | 'SOLUTION_COMMENT'
+  | 'NOTIFICATION';
 
 export type AdminAuditContext = {
   adminId: string;
