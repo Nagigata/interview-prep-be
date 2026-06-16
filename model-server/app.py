@@ -1,5 +1,8 @@
+import asyncio
 import json
 import os
+import time
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -83,6 +86,44 @@ FEEDBACK_CATEGORY_NAMES = [
     "Cultural & Role Fit",
     "Confidence & Clarity",
 ]
+
+
+# --- OpenAI-compatible types (used by /v1/chat/completions for arkon) ---
+
+
+class ChatMessage(BaseModel):
+    role: Literal["system", "user", "assistant", "tool"]
+    content: str | None = None
+
+
+class ChatCompletionRequest(BaseModel):
+    model: str
+    messages: list[ChatMessage]
+    temperature: float = 0.7
+    max_tokens: int | None = None
+    top_p: float = 0.9
+    stream: bool = False
+
+
+class ChatCompletionChoice(BaseModel):
+    index: int = 0
+    message: ChatMessage
+    finish_reason: Literal["stop", "length"] = "stop"
+
+
+class ChatCompletionUsage(BaseModel):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+class ChatCompletionResponse(BaseModel):
+    id: str
+    object: Literal["chat.completion"] = "chat.completion"
+    created: int
+    model: str
+    choices: list[ChatCompletionChoice]
+    usage: ChatCompletionUsage
 
 
 def project_root() -> Path:
@@ -448,6 +489,30 @@ def load_model(kind: Literal["question", "feedback"]):
     return tokenizer, model
 
 
+def load_base_model():
+    """
+    Reuse the question-LoRA model's PEFT wrapper. The base weights are
+    shared in VRAM; /v1/chat/completions wraps generate() in
+    `model.disable_adapters()` to suppress LoRA delta and recover pure base
+    behavior.
+
+    Rationale: loading base "raw" via AutoModelForCausalLM on a bnb-4bit
+    Unsloth checkpoint can leave lm_head/embed_tokens in an inconsistent
+    device placement, causing "Memory allocation failure" inside the bnb
+    kernel at inference time. Going through the PEFT wrapper triggers the
+    same memory-layout fixups that make /generate-questions work reliably.
+    """
+    return load_model("question")
+
+
+# Serialize all GPU inference across concurrent HTTP requests. Without this,
+# arkon's MRP MAP phase fires 2-3 chunks in parallel — each chunk's KV cache
+# on Qwen 3B at long context (~5-10k tokens) is ~2-3 GB, and 2 concurrent
+# requests easily OOM a 6GB GPU. Single asyncio.Lock here is enough because
+# `model.generate()` is a sync call that already blocks the event loop.
+_inference_lock = asyncio.Lock()
+
+
 app = FastAPI(title="PrepWise Local Qwen Model Server")
 
 
@@ -526,5 +591,79 @@ async def generate_feedback(payload: GenerateFeedbackRequest):
         data = extract_json(raw_text)
 
         return normalize_feedback(data)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+async def chat_completions(payload: ChatCompletionRequest):
+    """
+    OpenAI-compatible chat completion endpoint serving base Qwen (no LoRA).
+    External systems (e.g. arkon) hit this via OpenAI client SDKs by setting
+    base_url=http://this-host:8001/v1.
+    """
+    try:
+        if payload.stream:
+            raise HTTPException(
+                status_code=501,
+                detail="Streaming is not supported by this endpoint.",
+            )
+
+        tokenizer, model = load_base_model()
+
+        messages = [
+            {"role": m.role, "content": m.content or ""} for m in payload.messages
+        ]
+        prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        inputs = tokenizer(prompt, return_tensors="pt").to(model_device(model))
+
+        max_new = payload.max_tokens or 1024
+        do_sample = payload.temperature > 0
+
+        # Serialize concurrent inference to keep KV cache within 6GB VRAM budget.
+        # Note: question LoRA stays ACTIVE here — arkon's /v1/chat/completions
+        # gets question-LoRA-biased output. Accepted trade-off for stability
+        # on a 6GB GPU where the raw-base path triggers bnb memory layout
+        # issues that the PEFT wrapper sidesteps.
+        async with _inference_lock:
+            with torch.inference_mode():
+                output_ids = model.generate(
+                    **inputs,
+                    max_new_tokens=max_new,
+                    temperature=payload.temperature if do_sample else 1.0,
+                    top_p=payload.top_p,
+                    do_sample=do_sample,
+                    pad_token_id=tokenizer.eos_token_id,
+                )
+
+        prompt_tokens = int(inputs["input_ids"].shape[-1])
+        generated_ids = output_ids[0][prompt_tokens:]
+        completion_tokens = int(len(generated_ids))
+        text = tokenizer.decode(generated_ids, skip_special_tokens=True)
+
+        finish_reason = "length" if completion_tokens >= max_new else "stop"
+
+        return ChatCompletionResponse(
+            id=f"chatcmpl-{uuid.uuid4().hex[:24]}",
+            created=int(time.time()),
+            model=payload.model,
+            choices=[
+                ChatCompletionChoice(
+                    message=ChatMessage(role="assistant", content=text),
+                    finish_reason=finish_reason,
+                )
+            ],
+            usage=ChatCompletionUsage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=prompt_tokens + completion_tokens,
+            ),
+        )
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
