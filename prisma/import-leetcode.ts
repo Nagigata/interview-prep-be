@@ -4,7 +4,7 @@ import * as fs from 'fs';
 const prisma = new PrismaClient();
 
 const LEETCODE_JSON_PATH =
-  'd:/DAIHOC/DATN/leetcode-problems-master/merged_problems.json';
+  '/home/ubuntu/interview-prep-be/prisma/data/merged_problems.json';
 
 /**
  * Cleans the description by removing trailing boilerplate sections

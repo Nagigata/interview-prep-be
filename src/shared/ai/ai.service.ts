@@ -1,7 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { generateObject, generateText } from 'ai';
-import { google } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { z } from 'zod';
+import { PrismaService } from '../prisma/prisma.service';
+import { CryptoService } from '../crypto/crypto.service';
 
 export const feedbackSchema = z.object({
   totalScore: z.number(),
@@ -20,6 +24,7 @@ export const feedbackSchema = z.object({
 export type FeedbackResult = z.infer<typeof feedbackSchema>;
 
 interface GenerateQuestionsParams {
+  userId?: string;
   role: string;
   level: string;
   type: string;
@@ -27,6 +32,7 @@ interface GenerateQuestionsParams {
   amount: number;
   language?: string;
   provider?: string;
+  model?: string;
 }
 
 interface LocalQuestion {
@@ -42,20 +48,24 @@ interface LocalQuestionsResponse {
 }
 
 interface FeedbackContext {
+  userId?: string;
   role?: string;
   level?: string;
   type?: string;
   techstack?: string[] | string;
   language?: string;
+  provider?: string;
+  model?: string;
 }
 
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
-  private readonly questionProvider =
-    process.env.AI_QUESTION_PROVIDER || 'gemini';
-  private readonly feedbackProvider =
-    process.env.AI_FEEDBACK_PROVIDER || 'gemini';
+  
+  // Fallbacks if no user preferences or system configuration
+  private readonly defaultQuestionProvider = process.env.AI_QUESTION_PROVIDER || 'gemini';
+  private readonly defaultFeedbackProvider = process.env.AI_FEEDBACK_PROVIDER || 'gemini';
+  
   private readonly localQuestionModelUrl =
     process.env.LOCAL_QUESTION_MODEL_URL ||
     process.env.LOCAL_MODEL_URL ||
@@ -64,39 +74,111 @@ export class AiService {
     process.env.LOCAL_FEEDBACK_MODEL_URL ||
     process.env.LOCAL_MODEL_URL ||
     'http://localhost:8002';
-  private readonly localFallbackToGemini =
-    process.env.AI_LOCAL_FALLBACK_TO_GEMINI !== 'false';
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly crypto: CryptoService,
+  ) {}
 
   async generateInterviewQuestions(
     params: GenerateQuestionsParams,
   ): Promise<string[]> {
-    const provider = params.provider || this.questionProvider;
+    let provider = params.provider;
+    let modelName = params.model;
+    let apiKeyDecrypted: string | null = null;
 
-    if (provider === 'local-qwen') {
-      try {
-        return await this.generateInterviewQuestionsWithLocalQwen(params);
-      } catch (error) {
-        this.logger.error('Local Qwen question generation failed', error);
-
-        if (!this.localFallbackToGemini) {
-          throw error;
+    // 1. Resolve configuration from database if userId is provided
+    if (params.userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: params.userId },
+      });
+      if (user) {
+        provider = user.aiQuestionProvider;
+        modelName = user.aiQuestionModel;
+        
+        // Decrypt API key
+        if (provider === 'gemini' && user.aiGeminiApiKey) {
+          apiKeyDecrypted = this.crypto.decrypt(user.aiGeminiApiKey);
+        } else if (provider === 'openai' && user.aiOpenaiApiKey) {
+          apiKeyDecrypted = this.crypto.decrypt(user.aiOpenaiApiKey);
+        } else if (provider === 'anthropic' && user.aiAnthropicApiKey) {
+          apiKeyDecrypted = this.crypto.decrypt(user.aiAnthropicApiKey);
         }
-
-        this.logger.warn('Falling back to Gemini question generation');
       }
     }
 
-    return this.generateInterviewQuestionsWithGemini(params);
+    // Fallback to system default if provider is not resolved
+    if (!provider) {
+      provider = this.defaultQuestionProvider;
+    }
+
+    this.logger.log(`Generating interview questions using provider: ${provider}, model: ${modelName || 'default'}`);
+
+    // 2. Generate questions based on resolved provider
+    if (provider === 'local-qwen') {
+      return this.generateInterviewQuestionsWithLocalQwen(params);
+    }
+
+    if (!apiKeyDecrypted) {
+      // If no user API key, fallback to system environment variables for testing/demo
+      if (provider === 'gemini') {
+        apiKeyDecrypted = process.env.GOOGLE_GENERATIVE_AI_API_KEY || null;
+      } else if (provider === 'openai') {
+        apiKeyDecrypted = process.env.OPENAI_API_KEY || null;
+      } else if (provider === 'anthropic') {
+        apiKeyDecrypted = process.env.ANTHROPIC_API_KEY || null;
+      }
+    }
+
+    if (!apiKeyDecrypted) {
+      throw new BadRequestException(
+        `API key for ${provider} is missing. Please configure it in Settings -> AI Preferences.`,
+      );
+    }
+
+    const resolvedModel = modelName || this.getDefaultModelForProvider(provider, 'question');
+    const aiModel = this.getModelInstance(provider, resolvedModel, apiKeyDecrypted);
+
+    return this.generateQuestionsWithSdk(params, aiModel);
   }
 
-  private async generateInterviewQuestionsWithGemini(
+  private getDefaultModelForProvider(provider: string, type: 'question' | 'feedback'): string {
+    if (provider === 'gemini') return 'gemini-2.5-flash';
+    if (provider === 'openai') return 'gpt-4o-mini';
+    if (provider === 'anthropic') {
+      return type === 'question' ? 'claude-3-5-haiku-20241022' : 'claude-3-5-sonnet-20241022';
+    }
+    return '';
+  }
+
+  private getModelInstance(provider: string, modelName: string, apiKey: string) {
+    switch (provider) {
+      case 'gemini': {
+        const googleSDK = createGoogleGenerativeAI({ apiKey });
+        return googleSDK(modelName);
+      }
+      case 'openai': {
+        const openaiSDK = createOpenAI({ apiKey });
+        return openaiSDK(modelName);
+      }
+      case 'anthropic': {
+        const anthropicSDK = createAnthropic({ apiKey });
+        return anthropicSDK(modelName);
+      }
+      default:
+        throw new BadRequestException(`Unsupported AI provider: ${provider}`);
+    }
+  }
+
+  private async generateQuestionsWithSdk(
     params: GenerateQuestionsParams,
+    aiModel: any,
   ): Promise<string[]> {
     const { role, level, type, techstack, amount, language = 'en' } = params;
     const langInstruction = language === 'vi' ? 'Vietnamese' : 'English';
 
     const { text: questions } = await generateText({
-      model: google('gemini-2.5-flash'),
+      model: aiModel,
       prompt: `Prepare questions for a job interview.
         The job role is ${role}.
         The job experience level is ${level}.
@@ -108,7 +190,7 @@ export class AiService {
 
         Please return only the questions, without any additional text.
         The questions are going to be read by a voice assistant so do not use "/" or "*" or any other special characters which might break the voice assistant.
-        Return the questions formatted like this:
+        Return the questions formatted like this JSON array:
         ["Question 1", "Question 2", "Question 3"]
       `,
     });
@@ -145,7 +227,11 @@ export class AiService {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ...params,
+            role: params.role,
+            level: params.level,
+            type: params.type,
+            techstack: params.techstack,
+            amount: params.amount,
             language: params.language || 'en',
           }),
           signal: controller.signal,
@@ -179,32 +265,72 @@ export class AiService {
     language: string = 'en',
     context: FeedbackContext = {},
   ): Promise<FeedbackResult> {
-    const provider = this.feedbackProvider;
+    let provider = context.provider;
+    let modelName = context.model;
+    let apiKeyDecrypted: string | null = null;
 
-    if (provider === 'local-qwen') {
-      try {
-        return await this.generateFeedbackWithLocalQwen(
-          transcript,
-          language,
-          context,
-        );
-      } catch (error) {
-        this.logger.error('Local Qwen feedback generation failed', error);
+    // 1. Resolve configuration from database if userId is provided
+    if (context.userId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: context.userId },
+      });
+      if (user) {
+        provider = user.aiFeedbackProvider;
+        modelName = user.aiFeedbackModel;
 
-        if (!this.localFallbackToGemini) {
-          throw error;
+        // Decrypt API key
+        if (provider === 'gemini' && user.aiGeminiApiKey) {
+          apiKeyDecrypted = this.crypto.decrypt(user.aiGeminiApiKey);
+        } else if (provider === 'openai' && user.aiOpenaiApiKey) {
+          apiKeyDecrypted = this.crypto.decrypt(user.aiOpenaiApiKey);
+        } else if (provider === 'anthropic' && user.aiAnthropicApiKey) {
+          apiKeyDecrypted = this.crypto.decrypt(user.aiAnthropicApiKey);
         }
-
-        this.logger.warn('Falling back to Gemini feedback generation');
       }
     }
 
-    return this.generateFeedbackWithGemini(transcript, language);
+    // Fallback to system default if provider is not resolved
+    if (!provider) {
+      provider = this.defaultFeedbackProvider;
+    }
+
+    this.logger.log(`Generating feedback using provider: ${provider}, model: ${modelName || 'default'}`);
+
+    if (provider === 'local-qwen') {
+      return this.generateFeedbackWithLocalQwen(
+        transcript,
+        language,
+        context,
+      );
+    }
+
+    if (!apiKeyDecrypted) {
+      // System env fallback
+      if (provider === 'gemini') {
+        apiKeyDecrypted = process.env.GOOGLE_GENERATIVE_AI_API_KEY || null;
+      } else if (provider === 'openai') {
+        apiKeyDecrypted = process.env.OPENAI_API_KEY || null;
+      } else if (provider === 'anthropic') {
+        apiKeyDecrypted = process.env.ANTHROPIC_API_KEY || null;
+      }
+    }
+
+    if (!apiKeyDecrypted) {
+      throw new BadRequestException(
+        `API key for ${provider} is missing. Please configure it in Settings -> AI Preferences.`,
+      );
+    }
+
+    const resolvedModel = modelName || this.getDefaultModelForProvider(provider, 'feedback');
+    const aiModel = this.getModelInstance(provider, resolvedModel, apiKeyDecrypted);
+
+    return this.generateFeedbackWithSdk(transcript, language, aiModel);
   }
 
-  private async generateFeedbackWithGemini(
+  private async generateFeedbackWithSdk(
     transcript: { role: string; content: string }[],
-    language: string = 'en',
+    language: string,
+    aiModel: any,
   ): Promise<FeedbackResult> {
     const formattedTranscript = transcript
       .map((sentence) => `- ${sentence.role}: ${sentence.content}\n`)
@@ -213,7 +339,7 @@ export class AiService {
     const langInstruction = language === 'vi' ? 'Vietnamese' : 'English';
 
     const { object } = await generateObject({
-      model: google('gemini-2.5-flash'),
+      model: aiModel,
       schema: feedbackSchema,
       prompt: `
         You are an AI interviewer analyzing a mock interview. Your task is to evaluate the candidate based on structured categories. Be thorough and detailed in your analysis. Don't be lenient with the candidate. If there are mistakes or areas for improvement, point them out.

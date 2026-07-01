@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { CryptoService } from '../../shared/crypto/crypto.service';
+import { RedisService } from '../../shared/redis/redis.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { DeleteAccountDto } from './dto/delete-account.dto';
 
@@ -25,9 +27,26 @@ type ActivityType = 'all' | 'challenges' | 'interviews';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly crypto: CryptoService,
+    private readonly redis: RedisService,
+  ) {}
+
+  /** Invalidate all cached data for a given user. */
+  async invalidateUserCache(userId: string): Promise<void> {
+    await this.redis.del(`user:profile:${userId}`);
+    await this.redis.delByPattern(`user:public-profile:${userId}*`);
+  }
 
   async findById(id: string, timezone?: string) {
+    const cacheKey = `user:profile:${id}`;
+    return this.redis.getOrSet(cacheKey, 60, () =>
+      this._findByIdUncached(id, timezone),
+    );
+  }
+
+  private async _findByIdUncached(id: string, timezone?: string) {
     const userTimezone = this.normalizeTimezone(timezone);
     const oneYearAgo = new Date();
     oneYearAgo.setDate(oneYearAgo.getDate() - 364);
@@ -67,6 +86,13 @@ export class UsersService {
           notifyInterviewActivity: true,
           notifyComments: true,
           notifySound: true,
+          aiQuestionProvider: true,
+          aiQuestionModel: true,
+          aiFeedbackProvider: true,
+          aiFeedbackModel: true,
+          aiGeminiApiKey: true,
+          aiOpenaiApiKey: true,
+          aiAnthropicApiKey: true,
           deletedAt: true,
           password: true,
         } as any,
@@ -256,6 +282,9 @@ export class UsersService {
       password: _password,
       googleId: _googleId,
       githubId: _githubId,
+      aiGeminiApiKey,
+      aiOpenaiApiKey,
+      aiAnthropicApiKey,
       ...userWithoutPassword
     } = (user as any) ?? {};
     const linkedProviders: ('GOOGLE' | 'GITHUB')[] = [];
@@ -264,6 +293,9 @@ export class UsersService {
     return {
       ...userWithoutPassword,
       hasPassword: Boolean((user as any)?.password),
+      hasGeminiKey: Boolean(aiGeminiApiKey),
+      hasOpenaiKey: Boolean(aiOpenaiApiKey),
+      hasAnthropicKey: Boolean(aiAnthropicApiKey),
       linkedProviders,
       stats: {
         totalStarredChallenges: starredCount,
@@ -351,6 +383,35 @@ export class UsersService {
       updateData.notifySound = data.notifySound;
     }
 
+    // AI Preferences & Encrypted API Keys
+    if (data.aiQuestionProvider !== undefined) {
+      updateData.aiQuestionProvider = data.aiQuestionProvider;
+    }
+    if (data.aiQuestionModel !== undefined) {
+      updateData.aiQuestionModel = data.aiQuestionModel;
+    }
+    if (data.aiFeedbackProvider !== undefined) {
+      updateData.aiFeedbackProvider = data.aiFeedbackProvider;
+    }
+    if (data.aiFeedbackModel !== undefined) {
+      updateData.aiFeedbackModel = data.aiFeedbackModel;
+    }
+    if (data.aiGeminiApiKey !== undefined) {
+      updateData.aiGeminiApiKey = data.aiGeminiApiKey.trim()
+        ? this.crypto.encrypt(data.aiGeminiApiKey.trim())
+        : null;
+    }
+    if (data.aiOpenaiApiKey !== undefined) {
+      updateData.aiOpenaiApiKey = data.aiOpenaiApiKey.trim()
+        ? this.crypto.encrypt(data.aiOpenaiApiKey.trim())
+        : null;
+    }
+    if (data.aiAnthropicApiKey !== undefined) {
+      updateData.aiAnthropicApiKey = data.aiAnthropicApiKey.trim()
+        ? this.crypto.encrypt(data.aiAnthropicApiKey.trim())
+        : null;
+    }
+
     if (avatar) {
       updateData.avatarUrl = this.getAvatarPublicUrl(avatar.filename);
     }
@@ -364,6 +425,7 @@ export class UsersService {
       data: updateData,
     });
 
+    await this.invalidateUserCache(userId);
     return this.findById(userId);
   }
 
@@ -414,6 +476,7 @@ export class UsersService {
       } as any,
     });
 
+    await this.invalidateUserCache(userId);
     return { success: true };
   }
 
@@ -451,6 +514,7 @@ export class UsersService {
       data: updateData,
     });
 
+    await this.invalidateUserCache(userId);
     return { success: true, provider };
   }
 
@@ -491,6 +555,7 @@ export class UsersService {
       data: { [column]: null } as any,
     });
 
+    await this.invalidateUserCache(userId);
     return { success: true, provider };
   }
 

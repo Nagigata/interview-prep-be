@@ -56,6 +56,15 @@ model User {
   notifyComments          Boolean @default(true) @map("notify_comments")
   notifySound             Boolean @default(true) @map("notify_sound")
 
+  // AI Model Preferences
+  aiQuestionProvider String  @default("local-qwen") @map("ai_question_provider")
+  aiQuestionModel    String  @default("qwen-3b") @map("ai_question_model")
+  aiFeedbackProvider String  @default("local-qwen") @map("ai_feedback_provider")
+  aiFeedbackModel    String  @default("qwen-3b") @map("ai_feedback_model")
+  aiGeminiApiKey     String? @map("ai_gemini_api_key")
+  aiOpenaiApiKey     String? @map("ai_openai_api_key")
+  aiAnthropicApiKey  String? @map("ai_anthropic_api_key")
+
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)

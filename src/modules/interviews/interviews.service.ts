@@ -4,19 +4,28 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { RedisService } from '../../shared/redis/redis.service';
 import { CreateInterviewDto } from './dto/create-interview.dto';
 
 @Injectable()
 export class InterviewsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
 
   async create(userId: string, createInterviewDto: CreateInterviewDto) {
-    return this.prisma.interview.create({
+    const interview = await this.prisma.interview.create({
       data: {
         ...createInterviewDto,
         userId,
       },
     });
+
+    // Invalidate cached interview lists
+    await this.redis.delByPattern('interviews:latest:*');
+    await this.redis.del(`interviews:user:${userId}`);
+    return interview;
   }
 
   async findById(id: string) {
@@ -32,28 +41,34 @@ export class InterviewsService {
   }
 
   async findByUserId(userId: string) {
-    const interviews = await (this.prisma.interview.findMany as any)({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      include: this.getStarInclude(userId),
-    });
+    const cacheKey = `interviews:user:${userId}`;
+    return this.redis.getOrSet(cacheKey, 60, async () => {
+      const interviews = await (this.prisma.interview.findMany as any)({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        include: this.getStarInclude(userId),
+      });
 
-    return interviews.map((interview: any) => this.withStarred(interview));
+      return interviews.map((interview: any) => this.withStarred(interview));
+    });
   }
 
   async findLatest(userId: string, limit = 20) {
-    const interviews = await (this.prisma.interview.findMany as any)({
-      where: {
-        finalized: true,
-        archivedAt: null,
-        userId: { not: userId },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      include: this.getStarInclude(userId),
-    });
+    const cacheKey = `interviews:latest:${userId}:${limit}`;
+    return this.redis.getOrSet(cacheKey, 60, async () => {
+      const interviews = await (this.prisma.interview.findMany as any)({
+        where: {
+          finalized: true,
+          archivedAt: null,
+          userId: { not: userId },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        include: this.getStarInclude(userId),
+      });
 
-    return interviews.map((interview: any) => this.withStarred(interview));
+      return interviews.map((interview: any) => this.withStarred(interview));
+    });
   }
 
   async update(id: string, data: Partial<CreateInterviewDto>) {

@@ -29,3 +29,11 @@ prisma/*.db
 .DS_Store
 .idea/
 .vscode/
+
+# custom ignore
+.env.new
+uploads/
+ping
+*.bak
+__pycache__/
+*.pyc

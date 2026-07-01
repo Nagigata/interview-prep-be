@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 
 import { PrismaModule } from './shared/prisma/prisma.module';
+import { CryptoModule } from './shared/crypto/crypto.module';
+import { RedisModule } from './shared/redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { InterviewsModule } from './modules/interviews/interviews.module';
@@ -21,6 +23,8 @@ import { SolutionsModule } from './modules/solutions/solutions.module';
       isGlobal: true,
     }),
     PrismaModule,
+    CryptoModule,
+    RedisModule,
     AuthModule,
     UsersModule,
     InterviewsModule,

@@ -17,10 +17,14 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // CORS
+  const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim());
   app.enableCors({
-    origin: ['http://localhost:3000'], // Next.js frontend
+    origin: allowedOrigins,
     credentials: true,
   });
+
 
   // Global pipes
   app.useGlobalPipes(

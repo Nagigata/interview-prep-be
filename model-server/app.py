@@ -175,10 +175,12 @@ def max_new_tokens(kind: Literal["question", "feedback"]) -> int:
 
 
 def torch_dtype() -> torch.dtype:
+    dtype = os.getenv("LOCAL_MODEL_DTYPE", "").lower()
     if not torch.cuda.is_available():
-        return torch.float32
+        # CPU: bfloat16 giảm nửa RAM (~6GB thay vì ~12GB); mặc định float32 nếu không set
+        return torch.bfloat16 if dtype == "bfloat16" else torch.float32
 
-    dtype = os.getenv("LOCAL_MODEL_DTYPE", "float16").lower()
+    dtype = dtype or "float16"
     return torch.bfloat16 if dtype == "bfloat16" else torch.float16
 
 
@@ -455,106 +457,40 @@ def normalize_feedback(data: dict[str, Any]) -> GenerateFeedbackResponse:
     )
 
 
-@lru_cache(maxsize=2)
-def load_model(kind: Literal["question", "feedback"]):
-    adapter = adapter_path(kind)
-    if not Path(adapter).exists():
-        raise RuntimeError(f"LoRA adapter path does not exist: {adapter}")
+from openai import AsyncOpenAI
 
-    tokenizer = AutoTokenizer.from_pretrained(adapter, trust_remote_code=False)
-    quantization_config = None
-    if load_in_4bit() and torch.cuda.is_available():
-        quantization_config = BitsAndBytesConfig(load_in_4bit=True)
+DEFAULT_BASE_MODEL = "unsloth/qwen2.5-3b-instruct-bnb-4bit"
 
-    model_kwargs = {
-        "quantization_config": quantization_config,
-        "device_map": "auto" if quantization_config else None,
-        "trust_remote_code": False,
-    }
-    if quantization_config is None:
-        model_kwargs["dtype"] = torch_dtype()
+VLLM_PORT = int(os.getenv("LOCAL_VLLM_PORT", "8000"))
+VLLM_URL = f"http://localhost:{VLLM_PORT}/v1"
+openai_client = AsyncOpenAI(base_url=VLLM_URL, api_key="dummy-key")
 
-    base_model = AutoModelForCausalLM.from_pretrained(
-        model_name(),
-        **model_kwargs,
-    )
-    model = PeftModel.from_pretrained(
-        base_model,
-        adapter,
-        is_trainable=False,
-    )
-    if quantization_config is None:
-        model.to(target_device())
-    model.eval()
-    return tokenizer, model
-
-
-def load_base_model():
-    """
-    Reuse the question-LoRA model's PEFT wrapper. The base weights are
-    shared in VRAM; /v1/chat/completions wraps generate() in
-    `model.disable_adapters()` to suppress LoRA delta and recover pure base
-    behavior.
-
-    Rationale: loading base "raw" via AutoModelForCausalLM on a bnb-4bit
-    Unsloth checkpoint can leave lm_head/embed_tokens in an inconsistent
-    device placement, causing "Memory allocation failure" inside the bnb
-    kernel at inference time. Going through the PEFT wrapper triggers the
-    same memory-layout fixups that make /generate-questions work reliably.
-    """
-    return load_model("question")
-
-
-# Serialize all GPU inference across concurrent HTTP requests. Without this,
-# arkon's MRP MAP phase fires 2-3 chunks in parallel — each chunk's KV cache
-# on Qwen 3B at long context (~5-10k tokens) is ~2-3 GB, and 2 concurrent
-# requests easily OOM a 6GB GPU. Single asyncio.Lock here is enough because
-# `model.generate()` is a sync call that already blocks the event loop.
-_inference_lock = asyncio.Lock()
-
-
-app = FastAPI(title="PrepWise Local Qwen Model Server")
-
+app = FastAPI(title="Local Qwen vLLM Proxy")
 
 @app.get("/health")
 def health():
     return {
         "status": "ok",
-        "provider": "local-qwen",
+        "provider": "local-vllm-proxy",
         "questionAdapterPath": question_adapter_path(),
         "feedbackAdapterPath": feedback_adapter_path(),
         "baseModel": model_name(),
-        "cuda": torch.cuda.is_available(),
+        "vllmUrl": VLLM_URL,
     }
 
 
 @app.post("/generate-questions", response_model=GenerateQuestionsResponse)
 async def generate_questions(payload: GenerateQuestionsRequest):
     try:
-        tokenizer, model = load_model("question")
         messages = build_messages(payload)
-        prompt = tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
+        response = await openai_client.chat.completions.create(
+            model="question-lora",
+            messages=messages,
+            temperature=float(os.getenv("LOCAL_MODEL_TEMPERATURE", "0.7")),
+            top_p=float(os.getenv("LOCAL_MODEL_TOP_P", "0.9")),
+            max_tokens=max_new_tokens("question"),
         )
-        inputs = tokenizer(prompt, return_tensors="pt").to(model_device(model))
-
-        with torch.inference_mode():
-            output_ids = model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens("question"),
-                do_sample=True,
-                temperature=float(os.getenv("LOCAL_MODEL_TEMPERATURE", "0.7")),
-                top_p=float(os.getenv("LOCAL_MODEL_TOP_P", "0.9")),
-                repetition_penalty=float(
-                    os.getenv("LOCAL_MODEL_REPETITION_PENALTY", "1.05")
-                ),
-                pad_token_id=tokenizer.eos_token_id,
-            )
-
-        generated_ids = output_ids[0][inputs["input_ids"].shape[-1] :]
-        raw_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
+        raw_text = response.choices[0].message.content
         data = extract_json(raw_text)
         questions = normalize_questions(data, payload.amount)
 
@@ -566,28 +502,14 @@ async def generate_questions(payload: GenerateQuestionsRequest):
 @app.post("/generate-feedback", response_model=GenerateFeedbackResponse)
 async def generate_feedback(payload: GenerateFeedbackRequest):
     try:
-        tokenizer, model = load_model("feedback")
         messages = build_feedback_messages(payload)
-        prompt = tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
+        response = await openai_client.chat.completions.create(
+            model="feedback-lora",
+            messages=messages,
+            temperature=0.0,
+            max_tokens=max_new_tokens("feedback"),
         )
-        inputs = tokenizer(prompt, return_tensors="pt").to(model_device(model))
-
-        with torch.inference_mode():
-            output_ids = model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens("feedback"),
-                do_sample=False,
-                repetition_penalty=float(
-                    os.getenv("LOCAL_FEEDBACK_MODEL_REPETITION_PENALTY", "1.05")
-                ),
-                pad_token_id=tokenizer.eos_token_id,
-            )
-
-        generated_ids = output_ids[0][inputs["input_ids"].shape[-1] :]
-        raw_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
+        raw_text = response.choices[0].message.content
         data = extract_json(raw_text)
 
         return normalize_feedback(data)
@@ -597,11 +519,6 @@ async def generate_feedback(payload: GenerateFeedbackRequest):
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(payload: ChatCompletionRequest):
-    """
-    OpenAI-compatible chat completion endpoint serving base Qwen (no LoRA).
-    External systems (e.g. arkon) hit this via OpenAI client SDKs by setting
-    base_url=http://this-host:8001/v1.
-    """
     try:
         if payload.stream:
             raise HTTPException(
@@ -609,61 +526,14 @@ async def chat_completions(payload: ChatCompletionRequest):
                 detail="Streaming is not supported by this endpoint.",
             )
 
-        tokenizer, model = load_base_model()
-
-        messages = [
-            {"role": m.role, "content": m.content or ""} for m in payload.messages
-        ]
-        prompt = tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
+        response = await openai_client.chat.completions.create(
+            model=model_name(),
+            messages=[{"role": m.role, "content": m.content or ""} for m in payload.messages],
+            temperature=payload.temperature,
+            max_tokens=payload.max_tokens or 1024,
+            top_p=payload.top_p,
         )
-        inputs = tokenizer(prompt, return_tensors="pt").to(model_device(model))
 
-        max_new = payload.max_tokens or 1024
-        do_sample = payload.temperature > 0
-
-        # Serialize concurrent inference to keep KV cache within 6GB VRAM budget.
-        # Note: question LoRA stays ACTIVE here — arkon's /v1/chat/completions
-        # gets question-LoRA-biased output. Accepted trade-off for stability
-        # on a 6GB GPU where the raw-base path triggers bnb memory layout
-        # issues that the PEFT wrapper sidesteps.
-        async with _inference_lock:
-            with torch.inference_mode():
-                output_ids = model.generate(
-                    **inputs,
-                    max_new_tokens=max_new,
-                    temperature=payload.temperature if do_sample else 1.0,
-                    top_p=payload.top_p,
-                    do_sample=do_sample,
-                    pad_token_id=tokenizer.eos_token_id,
-                )
-
-        prompt_tokens = int(inputs["input_ids"].shape[-1])
-        generated_ids = output_ids[0][prompt_tokens:]
-        completion_tokens = int(len(generated_ids))
-        text = tokenizer.decode(generated_ids, skip_special_tokens=True)
-
-        finish_reason = "length" if completion_tokens >= max_new else "stop"
-
-        return ChatCompletionResponse(
-            id=f"chatcmpl-{uuid.uuid4().hex[:24]}",
-            created=int(time.time()),
-            model=payload.model,
-            choices=[
-                ChatCompletionChoice(
-                    message=ChatMessage(role="assistant", content=text),
-                    finish_reason=finish_reason,
-                )
-            ],
-            usage=ChatCompletionUsage(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=prompt_tokens + completion_tokens,
-            ),
-        )
-    except HTTPException:
-        raise
+        return ChatCompletionResponse(**response.model_dump())
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

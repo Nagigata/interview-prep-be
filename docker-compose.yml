@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: ai_mock_interview
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: 123456
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped

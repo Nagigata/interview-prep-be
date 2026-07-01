@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../../shared/prisma/prisma.service';
+import { RedisService } from '../../shared/redis/redis.service';
 import { firstValueFrom } from 'rxjs';
 
 @Injectable()
@@ -15,7 +16,8 @@ export class SubmissionsService {
   constructor(
     private readonly httpService: HttpService,
     private readonly prisma: PrismaService,
-  ) {}
+    private readonly redis: RedisService,
+  ) { }
 
   private getLanguageId(language: string): number {
     const map: Record<string, number> = {
@@ -264,6 +266,12 @@ export class SubmissionsService {
         totalTestCases,
       },
     });
+
+    // Invalidate user profile cache since submission stats changed
+    await this.redis.del(`user:profile:${userId}`);
+    await this.redis.delByPattern(`user:public-profile:${userId}*`);
+    // Invalidate challenges list cache since isSolved status may have changed
+    await this.redis.delByPattern(`challenges:list:${userId}:*`);
 
     return {
       submissionId: submission.id,

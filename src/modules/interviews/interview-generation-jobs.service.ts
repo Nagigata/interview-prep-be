@@ -83,6 +83,7 @@ export class InterviewGenerationJobsService {
 
     try {
       const questions = await this.aiService.generateInterviewQuestions({
+        userId: job.userId,
         role: job.role,
         level: job.level,
         type: job.type,

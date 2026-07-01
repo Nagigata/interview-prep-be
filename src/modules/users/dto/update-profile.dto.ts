@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsDate,
   IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   MaxLength,
@@ -56,4 +57,40 @@ export class UpdateProfileDto {
   @IsBoolean()
   @Type(() => Boolean)
   notifySound?: boolean;
+
+  // AI Model Preferences
+  @IsOptional()
+  @IsString()
+  @IsIn(['local-qwen', 'gemini', 'openai', 'anthropic'])
+  aiQuestionProvider?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  aiQuestionModel?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['local-qwen', 'gemini', 'openai', 'anthropic'])
+  aiFeedbackProvider?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  aiFeedbackModel?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  aiGeminiApiKey?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  aiOpenaiApiKey?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  aiAnthropicApiKey?: string;
 }

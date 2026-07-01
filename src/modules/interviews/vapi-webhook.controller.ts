@@ -98,8 +98,8 @@ export class VapiWebhookController {
     this.logger.log(`Generating interview for user: ${userid}, role: ${role}`);
 
     try {
-      // Generate questions using AI
       const questions = await this.aiService.generateInterviewQuestions({
+        userId: userid,
         role,
         level,
         type,

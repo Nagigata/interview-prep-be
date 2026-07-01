@@ -4,6 +4,7 @@ import { AiService } from '../../shared/ai/ai.service';
 import { InterviewsService } from '../interviews/interviews.service';
 import { CreateFeedbackDto } from './dto/create-feedback.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RedisService } from '../../shared/redis/redis.service';
 
 @Injectable()
 export class FeedbacksService {
@@ -16,6 +17,7 @@ export class FeedbacksService {
     private readonly aiService: AiService,
     private readonly interviewsService: InterviewsService,
     private readonly notificationsService: NotificationsService,
+    private readonly redis: RedisService,
   ) {}
 
   async startGeneration(userId: string, createFeedbackDto: CreateFeedbackDto) {
@@ -35,12 +37,6 @@ export class FeedbacksService {
         endedAt: new Date(),
         failureReason: reason,
       });
-      await this.createFailedNotification(
-        userId,
-        attemptId,
-        interview,
-        reason,
-      );
 
       return {
         attemptId,
@@ -122,6 +118,9 @@ export class FeedbacksService {
         interview,
         feedback?.id,
       );
+      // Invalidate user profile cache since stats changed
+      await this.redis.del(`user:profile:${userId}`);
+      await this.redis.delByPattern(`user:public-profile:${userId}*`);
     } catch (error) {
       const message =
         error instanceof Error
@@ -155,6 +154,7 @@ export class FeedbacksService {
         normalizedTranscript,
         interview.language,
         {
+          userId,
           role: interview.role,
           level: interview.level,
           type: interview.type,
